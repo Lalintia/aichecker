@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AlertCircle } from "lucide-react";
 
 interface HeroSectionProps {
   onAnalyze: (url: string) => void;
@@ -8,13 +9,28 @@ interface HeroSectionProps {
 }
 
 export default function HeroSection({ onAnalyze, isLoading }: HeroSectionProps) {
-  const [url, setUrl] = useState("www.se-ed.com");
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (url.trim()) {
-      onAnalyze(url);
+    setError("");
+    
+    const trimmedUrl = url.trim();
+    
+    if (!trimmedUrl) {
+      setError("กรุณากรอก URL เว็บไซต์");
+      return;
     }
+    
+    // Basic URL validation
+    const urlPattern = /^(https?:\/\/)?[\w\-\.]+\.[a-zA-Z]{2,}(\/\S*)?$/;
+    if (!urlPattern.test(trimmedUrl)) {
+      setError("กรุณากรอก URL ให้ถูกต้อง (เช่น www.example.com หรือ https://example.com)");
+      return;
+    }
+    
+    onAnalyze(trimmedUrl);
   };
 
   return (
@@ -39,10 +55,21 @@ export default function HeroSection({ onAnalyze, isLoading }: HeroSectionProps) 
               <input
                 type="text"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  setError("");
+                }}
                 placeholder="www.example.com"
-                className="w-full bg-[#0f172a] border border-[#334155] rounded-lg px-4 py-3 text-white text-center placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+                className={`w-full bg-[#0f172a] border rounded-lg px-4 py-3 text-white text-center placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors ${
+                  error ? "border-red-500" : "border-[#334155]"
+                }`}
               />
+              {error && (
+                <div className="flex items-center gap-2 mt-2 text-red-400 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Search Checker - NerdOptimize",
+  title: "AI Search Checker - ohmai.me",
   description: "ตรวจให้พร้อมก่อนให้ AI ค้นหาเว็บไซต์ของคุณ",
 };
 

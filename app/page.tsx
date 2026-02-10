@@ -1,157 +1,210 @@
 "use client";
 
 import { useState } from "react";
+import { analyzeWebsite, CheckResponse, getGradeLabel, checkLabels, CheckType } from "@/lib/api";
 import HeroSection from "@/components/HeroSection";
 import ResultSection from "@/components/ResultSection";
-import { CheckItem } from "@/components/Checklist";
-import { SchemaType } from "@/components/SchemaDetail";
-import { runAllChecks, calculateScore } from "@/lib/checker";
+import { CheckCircle, AlertCircle, XCircle, Loader2 } from "lucide-react";
 
 export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const [analyzedUrl, setAnalyzedUrl] = useState("");
-  const [score, setScore] = useState(0);
-  const [checkItems, setCheckItems] = useState<CheckItem[]>([]);
-  const [foundSchemas, setFoundSchemas] = useState<SchemaType[]>([]);
-  const [missingSchemas, setMissingSchemas] = useState<SchemaType[]>([]);
-
-  // Schema types ที่ตรวจสอบ
-  const allSchemaTypes = [
-    "OnlineStore",
-    "PostalAddress",
-    "SearchAction",
-    "WebSite",
-    "AggregateRating",
-    "Article",
-    "BlogPosting",
-    "BreadcrumbList",
-    "CreativeWorkSeries",
-    "FAQPage",
-    "HowTo",
-    "ImageObject",
-    "LocalBusiness",
-    "NewsArticle",
-    "Offer",
-    "Organization",
-    "Person",
-    "Product",
-    "QAPage",
-    "Review",
-    "VideoObject",
-    "WebPage",
-  ];
+  const [result, setResult] = useState<CheckResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleAnalyze = async (url: string) => {
     setIsAnalyzing(true);
-    setShowResults(false);
+    setResult(null);
+    setError(null);
 
     try {
-      // รันการตรวจสอบทั้งหมด
-      const results = await runAllChecks(url);
-      
-      // คำนวณคะแนน
-      const calculatedScore = calculateScore(results);
-      setScore(calculatedScore);
-
-      // สร้าง Check Items
-      const items: CheckItem[] = [
-        {
-          id: "schema",
-          name: "Schema Data (JSON-LD)",
-          description: "ช่วยให้ AI เข้าใจเนื้อหาเว็บไซต์ได้ถูกต้อง",
-          impact: "ถ้าไม่มี AI อาจไม่รู้ว่าหน้าเว็บพูดถึงอะไร",
-          status: results.schema.found ? "pass" : "fail",
-          count: results.schema.count,
-        },
-        {
-          id: "robots",
-          name: "Robots.txt",
-          description: "บอกให้ AI รู้ว่าเข้าถึงหน้าไหนได้บ้าง",
-          impact: "ถ้าไม่มี AI อาจอ่านข้อมูลผิด",
-          status: results.robotsTxt.found ? "pass" : "fail",
-        },
-        {
-          id: "llms",
-          name: "LLMs.txt",
-          description: "แนะนำ AI ว่าข้อมูลไหนใช้ได้หรือไม่",
-          impact: "ถ้าไม่มี AI อาจใช้ข้อมูลผิดพลาด",
-          status: results.llmsTxt.found ? "pass" : "fail",
-        },
-        {
-          id: "webapi",
-          name: "Web API (ai-plugin.json)",
-          description: "ช่วยให้ AI ดึงข้อมูลเฉพาะทางจากเว็บไซต์ได้โดยตรง",
-          impact: "ถ้าไม่มี AI จะเข้าถึงบริการคุณไม่ได้",
-          status: results.webAPI.found ? "pass" : "fail",
-        },
-        {
-          id: "github",
-          name: "Public GitHub Repository",
-          description: "แหล่งข้อมูลบุคคลที่ AI เข้าอ่านได้",
-          impact: "ถ้าไม่มี AI จะไม่เห็นข้อมูลเชิงลึกของคุณ",
-          status: results.githubRepo.found ? "pass" : "fail",
-        },
-        {
-          id: "customgpt",
-          name: "Custom GPT Mention",
-          description: "ช่วยให้ AI รู้ว่าคุณมี AI Assistant หรือ GPT ของตัวเอง",
-          impact: "เพิ่มโอกาสให้ธุรกิจคุณถูกกล่าวถึงบ่อยใน AI Search",
-          status: results.customGPT.found ? "pass" : "fail",
-        },
-        {
-          id: "wikidata",
-          name: "Wikidata Mention",
-          description: "อ้างอิงข้อมูลบริษัทกับ Wikidata",
-          impact: "ถ้าไม่มี AI อาจไม่รู้ว่าคุณคือใคร",
-          status: results.wikidata.found ? "pass" : "fail",
-        },
-        {
-          id: "credential",
-          name: "Company Credential Data",
-          description: "ยืนยันความน่าเชื่อถือของบริษัท",
-          impact: "ถ้าไม่มี AI อาจมองว่าเว็บไม่ปลอดภัย",
-          status: results.companyCredential.found ? "pass" : "fail",
-        },
-      ];
-      setCheckItems(items);
-
-      // แยก Schema ที่พบและไม่พบ
-      // จำลอง: พบ 4 ประเภทแรก, ที่เหลือไม่พบ
-      const found: SchemaType[] = allSchemaTypes.slice(0, 4).map((name) => ({
-        name,
-        found: true,
-      }));
-      const missing: SchemaType[] = allSchemaTypes.slice(4).map((name) => ({
-        name,
-        found: false,
-      }));
-      
-      setFoundSchemas(found);
-      setMissingSchemas(missing);
-
-      setAnalyzedUrl(url);
-      setShowResults(true);
-    } catch (error) {
-      console.error("Error analyzing website:", error);
-      alert("เกิดข้อผิดพลาดในการวิเคราะห์ กรุณาลองใหม่อีกครั้ง");
+      const data = await analyzeWebsite(url);
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
+  const gradeInfo = result ? getGradeLabel(result.grade) : null;
+
   return (
     <main className="min-h-screen bg-[#0f172a]">
       <HeroSection onAnalyze={handleAnalyze} isLoading={isAnalyzing} />
 
-      {showResults && (
-        <ResultSection
-          url={analyzedUrl}
-          score={score}
-          checkItems={checkItems}
-          foundSchemas={foundSchemas}
-          missingSchemas={missingSchemas}
-        />
+      {error && (
+        <div className="max-w-4xl mx-auto px-4 -mt-10 mb-10">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 text-center">
+            <XCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
+            <h3 className="text-red-400 font-semibold text-lg mb-1">เกิดข้อผิดพลาด</h3>
+            <p className="text-slate-400">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div className="max-w-6xl mx-auto px-4 pb-20">
+          {/* Overall Score */}
+          <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-8 mb-8">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-white mb-2">ผลการตรวจสอบ</h2>
+              <p className="text-slate-400 mb-6">{result.url}</p>
+              
+              <div className="inline-flex items-center gap-6 bg-slate-900/50 rounded-2xl p-6">
+                <div className="text-center">
+                  <div className={`text-6xl font-bold ${gradeInfo?.color} mb-2`}>
+                    {result.overallScore}
+                  </div>
+                  <div className="text-slate-400">คะแนนรวม / 100</div>
+                </div>
+                <div className="w-px h-20 bg-slate-700" />
+                <div className="text-left">
+                  <div className={`text-2xl font-bold ${gradeInfo?.color} mb-1`}>
+                    {gradeInfo?.label}
+                  </div>
+                  <div className="text-slate-400">ระดับความพร้อม</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary Stats */}
+            <div className="grid grid-cols-3 gap-4 mt-8">
+              <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-center">
+                <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-green-400">{result.summary.passed}</div>
+                <div className="text-slate-400 text-sm">ผ่าน</div>
+              </div>
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 text-center">
+                <AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-yellow-400">{result.summary.warning}</div>
+                <div className="text-slate-400 text-sm">ควรปรับปรุง</div>
+              </div>
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-center">
+                <XCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-red-400">{result.summary.failed}</div>
+                <div className="text-slate-400 text-sm">ไม่ผ่าน</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Checks */}
+          <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 mb-8">
+            <h3 className="text-xl font-bold text-white mb-6">รายการตรวจสอบ ({result.summary.total} หัวข้อ)</h3>
+            
+            {/* Table Header */}
+            <div className="grid grid-cols-12 gap-4 mb-4 px-4 text-sm font-medium text-slate-400 border-b border-slate-700 pb-2">
+              <div className="col-span-1">#</div>
+              <div className="col-span-4">หัวข้อ</div>
+              <div className="col-span-2 text-center">น้ำหนัก</div>
+              <div className="col-span-2 text-center">คะแนน</div>
+              <div className="col-span-3">ผลลัพธ์</div>
+            </div>
+            
+            <div className="space-y-3">
+              {(Object.keys(checkLabels) as CheckType[]).map((key, index) => {
+                const check = result.checks[key];
+                const label = checkLabels[key];
+                
+                let statusColor = 'text-red-400 bg-red-500/10 border-red-500/20';
+                let statusIcon = '🔴';
+                if (check.score! >= 80) {
+                  statusColor = 'text-green-400 bg-green-500/10 border-green-500/20';
+                  statusIcon = '✅';
+                } else if (check.score! >= 50) {
+                  statusColor = 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20';
+                  statusIcon = '🟡';
+                }
+                
+                return (
+                  <div key={key} className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+                    <div className="grid grid-cols-12 gap-4 items-center">
+                      {/* # */}
+                      <div className="col-span-1 text-slate-500 font-medium">{index + 1}</div>
+                      
+                      {/* หัวข้อ */}
+                      <div className="col-span-4">
+                        <h4 className="font-semibold text-white">{label.title}</h4>
+                        <p className="text-slate-500 text-xs">{label.description}</p>
+                      </div>
+                      
+                      {/* น้ำหนัก */}
+                      <div className="col-span-2 text-center">
+                        <span className="inline-block px-3 py-1 rounded-full bg-blue-500/20 text-blue-400 font-bold text-sm">
+                          {label.weight}%
+                        </span>
+                      </div>
+                      
+                      {/* คะแนน */}
+                      <div className="col-span-2 text-center">
+                        <div className={`inline-flex flex-col items-center justify-center w-16 h-14 rounded-lg border ${statusColor}`}>
+                          <span className="text-lg font-bold">{check.score}</span>
+                          <span className="text-xs">/100</span>
+                        </div>
+                      </div>
+                      
+                      {/* ผลลัพธ์ */}
+                      <div className="col-span-3">
+                        <p className={`text-sm ${check.found ? 'text-slate-300' : 'text-red-400'}`}>
+                          {statusIcon} {check.details}
+                        </p>
+                        {check.warnings && check.warnings.length > 0 && (
+                          <div className="mt-1 space-y-1">
+                            {check.warnings.map((warning, idx) => (
+                              <p key={idx} className="text-yellow-400 text-xs flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                {warning}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Recommendations */}
+          {result.recommendations.length > 0 && (
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-6">คำแนะนำสำหรับการปรับปรุง</h3>
+              
+              <div className="space-y-4">
+                {result.recommendations.map((rec, idx) => {
+                  const priorityColors = {
+                    critical: 'bg-red-500 text-white',
+                    high: 'bg-orange-500 text-white',
+                    medium: 'bg-yellow-500 text-black',
+                    low: 'bg-blue-500 text-white'
+                  };
+                  
+                  const priorityLabels = {
+                    critical: 'สำคัญมาก',
+                    high: 'สูง',
+                    medium: 'ปานกลาง',
+                    low: 'ต่ำ'
+                  };
+                  
+                  return (
+                    <div key={idx} className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+                      <div className="flex items-start gap-4">
+                        <span className={`flex-shrink-0 px-2 py-1 rounded text-xs font-medium ${priorityColors[rec.priority]}`}>
+                          {priorityLabels[rec.priority]}
+                        </span>
+                        <div>
+                          <h4 className="font-medium text-white mb-1">{rec.category}</h4>
+                          <p className="text-slate-400 text-sm mb-2">{rec.message}</p>
+                          <p className="text-green-400 text-sm">💡 {rec.action}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </main>
   );
