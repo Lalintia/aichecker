@@ -31,6 +31,34 @@ function normalizeUrl(url: string): string {
   return normalized.replace(/\/$/, '');
 }
 
+// SSRF protection - block internal IPs
+function isInternalIp(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname;
+    
+    // Block localhost
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+    
+    // Block private IP ranges
+    const privateRanges = [
+      /^10\./,                              // 10.0.0.0/8
+      /^172\.(1[6-9]|2[0-9]|3[01])\./,     // 172.16.0.0/12
+      /^192\.168\./,                        // 192.168.0.0/16
+      /^127\./,                             // 127.0.0.0/8
+      /^169\.254\./,                        // Link-local
+      /^0\./,                               // 0.0.0.0/8
+      /^::1$/,                              // IPv6 localhost
+      /^fc00:/i,                            // IPv6 private
+      /^fe80:/i,                            // IPv6 link-local
+    ];
+    
+    return privateRanges.some((range) => range.test(hostname));
+  } catch {
+    return true; // Invalid URL, treat as blocked
+  }
+}
+
 // API Route Handler
 export async function POST(request: NextRequest) {
   try {
@@ -45,7 +73,18 @@ export async function POST(request: NextRequest) {
 
     const normalizedUrl = normalizeUrl(url);
 
-    // Fetch HTML once
+    // SSRF protection
+    if (isInternalIp(normalizedUrl)) {
+      return NextResponse.json(
+        { error: 'Invalid URL. Cannot scan internal addresses.' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch HTML once with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
     const pageResponse = await fetch(normalizedUrl, {
       method: 'GET',
       headers: {
@@ -53,7 +92,9 @@ export async function POST(request: NextRequest) {
         Accept: 'text/html',
       },
       next: { revalidate: 0 },
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     if (!pageResponse.ok) {
       return NextResponse.json(

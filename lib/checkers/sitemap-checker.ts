@@ -39,6 +39,9 @@ export async function checkSitemap(
 
     for (const sitemapUrl of sitemapUrls) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
         const response = await fetch(sitemapUrl, {
           method: 'GET',
           headers: {
@@ -46,7 +49,9 @@ export async function checkSitemap(
             Accept: 'application/xml,text/xml',
           },
           next: { revalidate: 0 },
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
 
         if (response.ok) {
           const content = await response.text();

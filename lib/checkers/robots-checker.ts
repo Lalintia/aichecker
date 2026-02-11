@@ -21,6 +21,9 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
     const urlObj = new URL(url);
     const robotsUrl = `${urlObj.protocol}//${urlObj.host}/robots.txt`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
     const response = await fetch(robotsUrl, {
       method: 'GET',
       headers: {
@@ -28,7 +31,9 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
         Accept: 'text/plain',
       },
       next: { revalidate: 0 },
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       if (response.status === 404) {

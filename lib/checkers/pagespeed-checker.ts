@@ -22,11 +22,16 @@ const SPEED_THRESHOLDS: readonly SpeedThreshold[] = [
 
 export async function checkPageSpeed(url: string): Promise<CheckResult> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
     const startTime = Date.now();
     const response = await fetch(url, {
       method: 'GET',
       next: { revalidate: 0 },
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     const loadTime = Date.now() - startTime;
 
     if (!response.ok) {
