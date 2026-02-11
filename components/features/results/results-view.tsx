@@ -4,6 +4,7 @@ import type { CheckResponse } from '@/lib/types/checker';
 import { ScoreDisplay } from './components/score-display';
 import { StatsSummary } from './components/stats-summary';
 import { Checklist } from './components/checklist';
+import { Recommendations } from './components/recommendations';
 import { ResetButton } from './components/reset-button';
 
 interface ResultsViewProps {
@@ -30,6 +31,9 @@ export function ResultsView({ result, onReset }: ResultsViewProps): React.ReactE
 
       {/* Checklist */}
       <Checklist checks={result.checks} />
+
+      {/* Recommendations */}
+      <Recommendations recommendations={result.recommendations} />
 
       {/* Reset Button */}
       <ResetButton onReset={onReset} />

@@ -62,11 +62,11 @@ export function generateRecommendations(
     });
   }
 
-  if (!checks.llmsTxt.found) {
+  if (!checks.llmsTxt.found || checks.llmsTxt.score! < 60) {
     recommendations.push({
       priority: 'high',
       category: 'llms.txt',
-      message: 'llms.txt file not found',
+      message: checks.llmsTxt.found ? 'llms.txt needs improvement' : 'llms.txt file not found',
       action: 'Create llms.txt following Answer.AI standard',
     });
   }
@@ -114,7 +114,7 @@ export function generateRecommendations(
     });
   }
 
-  if (checks.headingHierarchy.warnings?.some((w) => w.includes('H1'))) {
+  if (checks.headingHierarchy.score! < 70) {
     recommendations.push({
       priority: 'medium',
       category: 'Headings',
