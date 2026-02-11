@@ -1,0 +1,38 @@
+'use client';
+
+import type { CheckResponse } from '@/lib/types/checker';
+import { ScoreDisplay } from './components/score-display';
+import { StatsSummary } from './components/stats-summary';
+import { Checklist } from './components/checklist';
+import { ResetButton } from './components/reset-button';
+
+interface ResultsViewProps {
+  readonly result: CheckResponse;
+  readonly onReset: () => void;
+}
+
+export function ResultsView({ result, onReset }: ResultsViewProps): React.ReactElement {
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-20 py-10">
+      {/* Score Card */}
+      <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-8 sm:p-10 mb-8">
+        <ScoreDisplay 
+          score={result.overallScore} 
+          grade={result.grade} 
+          url={result.url} 
+        />
+        <StatsSummary 
+          passed={result.summary.passed} 
+          warning={result.summary.warning} 
+          failed={result.summary.failed} 
+        />
+      </div>
+
+      {/* Checklist */}
+      <Checklist checks={result.checks} />
+
+      {/* Reset Button */}
+      <ResetButton onReset={onReset} />
+    </div>
+  );
+}
