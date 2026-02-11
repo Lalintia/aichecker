@@ -34,10 +34,7 @@ const nextConfig: NextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains; preload',
           },
-          {
-            key: 'X-Powered-By',
-            value: '',
-          },
+          // X-Powered-By removed via middleware
         ],
       },
     ];
