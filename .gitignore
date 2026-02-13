@@ -40,3 +40,7 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# Deploy artifacts
+deploy/
+deploy.tar.gz

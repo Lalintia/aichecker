@@ -6,6 +6,9 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult, createPartialResult } from './base';
+import { isSafeUrl, sanitizeContent } from '@/lib/security';
+
+const MAX_ROBOTS_SIZE = 1 * 1024 * 1024; // 1MB
 
 const AI_BOTS = [
   { name: 'GPTBot', critical: true },
@@ -21,19 +24,28 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
     const urlObj = new URL(url);
     const robotsUrl = `${urlObj.protocol}//${urlObj.host}/robots.txt`;
 
+    if (!isSafeUrl(robotsUrl)) {
+      return createFailureResult('robots.txt URL is not allowed', { url: robotsUrl });
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    const response = await fetch(robotsUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
-        Accept: 'text/plain',
-      },
-      next: { revalidate: 0 },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+
+    let response: Response;
+    try {
+      response = await fetch(robotsUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
+          Accept: 'text/plain',
+        },
+        redirect: 'manual',
+        next: { revalidate: 0 },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -48,7 +60,18 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
       });
     }
 
+    // Size guard before buffering body
+    const contentLengthHeader = response.headers.get('content-length');
+    if (contentLengthHeader && parseInt(contentLengthHeader, 10) > MAX_ROBOTS_SIZE) {
+      return createFailureResult('robots.txt too large to analyze', { url: robotsUrl });
+    }
     const content = await response.text();
+    if (content.length > MAX_ROBOTS_SIZE) {
+      return createFailureResult('robots.txt too large to analyze', { url: robotsUrl });
+    }
+
+    // Sanitize content for safe output
+    const safeContent = sanitizeContent(content, 1000);
 
     // Check for basic content
     const hasUserAgent = /User-agent:/i.test(content);
@@ -58,33 +81,44 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
 
     if (!hasUserAgent) {
       return createFailureResult('robots.txt exists but missing User-agent', {
-        content: content.substring(0, 500),
+        content: safeContent.slice(0, 500),
       });
     }
 
-    // Check for AI bot blocking
+    // Single-pass parser: O(lines + bots) instead of O(lines × bots)
+    const botNames = new Set<string>(AI_BOTS.map((b) => b.name));
+    const botBlockedMap = new Map<string, boolean>();
+    for (const bot of AI_BOTS) botBlockedMap.set(bot.name, false);
+    let currentSection: string | null = null;
+    let isBlockedGlobally = false;
+
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const userAgentMatch = trimmed.match(/^User-agent:\s*(.+)$/i);
+      if (userAgentMatch) {
+        currentSection = userAgentMatch[1].trim();
+        continue;
+      }
+
+      if (currentSection && trimmed.match(/^Disallow:\s*\/?\s*$/i)) {
+        if (currentSection === '*') {
+          isBlockedGlobally = true;
+        } else if (botNames.has(currentSection)) {
+          botBlockedMap.set(currentSection, true);
+        }
+      }
+    }
+
     const blockedBots: string[] = [];
     const allowedBots: string[] = [];
     const warnings: string[] = [];
 
-    // Check if ALL bots are blocked globally (Disallow: / with nothing after)
-    // This regex looks for Disallow: / followed by end of line or comment
-    const globalBlockPattern = /User-agent:\s*\*\s*\n(?:[^U]*\n)*?\s*Disallow:\s*\/(?:\s*(?:#|$))/im;
-    const isBlockedGlobally = globalBlockPattern.test(content);
-
     for (const bot of AI_BOTS) {
-      // Check if bot is explicitly blocked (User-agent: BotName + Disallow: /)
-      const botSpecificPattern = new RegExp(
-        `User-agent:\\s*${bot.name}\\s*\\n(?:[^U]*\\n)*?\\s*Disallow:\\s*\\/(?:\\s*(?:#|$))`,
-        'im'
-      );
-      const isBlockedSpecifically = botSpecificPattern.test(content);
-
-      if (isBlockedGlobally || isBlockedSpecifically) {
+      if (isBlockedGlobally || botBlockedMap.get(bot.name)) {
         blockedBots.push(bot.name);
-        if (bot.critical) {
-          warnings.push(`${bot.name} may be blocked from crawling`);
-        }
+        if (bot.critical) warnings.push(`${bot.name} may be blocked from crawling`);
       } else {
         allowedBots.push(bot.name);
       }
@@ -119,7 +153,7 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
           hasSitemap,
           blockedBots,
           allowedBots,
-          content: content.substring(0, 1000),
+          content: safeContent,
         },
         warnings.length > 0 ? warnings : undefined
       );
@@ -135,7 +169,7 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
         hasSitemap,
         blockedBots,
         allowedBots,
-        content: content.substring(0, 500),
+        content: safeContent,
       },
       warnings.length > 0 ? warnings : undefined
     );

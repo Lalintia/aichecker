@@ -1,5 +1,3 @@
-'use client';
-
 import type { CheckResponse } from '@/lib/types/checker';
 import { checkLabels, type CheckType } from '@/lib/utils/check-helpers';
 import { ChecklistItem } from './checklist-item';
@@ -20,6 +18,7 @@ export function Checklist({ checks }: ChecklistProps): React.ReactElement {
             index={index}
             check={checks[key]}
             label={checkLabels[key]}
+            checkType={key}
           />
         ))}
       </div>

@@ -1,5 +1,8 @@
+'use client';
+
 import { CheckCircle, Search, Zap } from 'lucide-react';
 import { UrlForm } from './url-form';
+import { ViewAllCriteriaButton } from '@/components/features/results/components/check-references';
 import type { CheckResponse } from '@/lib/types/checker';
 
 interface HeroSectionProps {
@@ -33,6 +36,11 @@ export function HeroSection({ onSuccess, onError }: HeroSectionProps): React.Rea
           <TrustIndicator icon={<Zap className="w-5 h-5" />} label="10 Key Factors" />
           <TrustIndicator icon={<Search className="w-5 h-5" />} label="Instant Results" />
         </div>
+
+        {/* View Criteria Button */}
+        <div className="mt-8">
+          <ViewAllCriteriaButton />
+        </div>
       </div>
     </section>
   );
@@ -46,7 +54,7 @@ interface TrustIndicatorProps {
 function TrustIndicator({ icon, label }: TrustIndicatorProps): React.ReactElement {
   return (
     <div className="flex items-center gap-2 text-sm">
-      {icon}
+      <span aria-hidden="true">{icon}</span>
       <span>{label}</span>
     </div>
   );

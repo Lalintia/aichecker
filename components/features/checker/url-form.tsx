@@ -19,7 +19,16 @@ export function UrlForm({ onSuccess, onError }: UrlFormProps): React.ReactElemen
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const url = formData.get('url') as string;
+    const rawUrl = formData.get('url');
+    if (typeof rawUrl !== 'string' || rawUrl.trim() === '') {
+      setClientError('Please enter a valid URL');
+      setIsLoading(false);
+      return;
+    }
+    let url = rawUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
 
     try {
       const response = await fetch('/api/check', {

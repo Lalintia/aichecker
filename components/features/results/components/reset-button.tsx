@@ -10,6 +10,7 @@ export function ResetButton({ onReset }: ResetButtonProps): React.ReactElement {
   return (
     <div className="text-center">
       <button
+        type="button"
         onClick={onReset}
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 font-medium transition-colors"
       >

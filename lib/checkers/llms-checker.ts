@@ -6,25 +6,37 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult } from './base';
+import { isSafeUrl, sanitizeContent } from '@/lib/security';
+
+const MAX_LLMS_SIZE = 512 * 1024; // 512KB
 
 export async function checkLlmsTxt(url: string): Promise<CheckResult> {
   try {
     const urlObj = new URL(url);
     const llmsUrl = `${urlObj.protocol}//${urlObj.host}/llms.txt`;
 
+    if (!isSafeUrl(llmsUrl)) {
+      return createFailureResult('llms.txt URL is not allowed', { url: llmsUrl });
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    const response = await fetch(llmsUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
-        Accept: 'text/plain',
-      },
-      next: { revalidate: 0 },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+
+    let response: Response;
+    try {
+      response = await fetch(llmsUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
+          Accept: 'text/plain',
+        },
+        redirect: 'manual',
+        next: { revalidate: 0 },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -39,7 +51,15 @@ export async function checkLlmsTxt(url: string): Promise<CheckResult> {
       });
     }
 
+    // Size guard before buffering body
+    const contentLengthHeader = response.headers.get('content-length');
+    if (contentLengthHeader && parseInt(contentLengthHeader, 10) > MAX_LLMS_SIZE) {
+      return createFailureResult('llms.txt too large to analyze', { url: llmsUrl });
+    }
     const content = await response.text();
+    if (content.length > MAX_LLMS_SIZE) {
+      return createFailureResult('llms.txt too large to analyze', { url: llmsUrl });
+    }
 
     // Basic validation of llms.txt format per Answer.AI standard
     const hasTitle = /^#\s+/m.test(content);
@@ -59,7 +79,7 @@ export async function checkLlmsTxt(url: string): Promise<CheckResult> {
       hasSections,
       hasMarkdownLinks,
       sections,
-      preview: content.substring(0, 500),
+      preview: sanitizeContent(content, 500),
     };
 
     // Score based on content quality

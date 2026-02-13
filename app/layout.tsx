@@ -40,7 +40,7 @@ export const viewport: Viewport = {
 };
 
 // Schema.org JSON-LD structured data
-const websiteSchema = {
+const websiteSchema: Record<string, unknown> = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
   name: 'AI Search Checker',
@@ -62,7 +62,7 @@ const websiteSchema = {
   },
 };
 
-const organizationSchema = {
+const organizationSchema: Record<string, unknown> = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: 'AI Search Checker',
@@ -75,7 +75,7 @@ const organizationSchema = {
   },
 };
 
-const faqSchema = {
+const faqSchema: Record<string, unknown> = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
   mainEntity: [

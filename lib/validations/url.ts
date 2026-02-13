@@ -9,20 +9,13 @@ export const urlSchema = z
   .min(1, 'URL is required')
   .max(2048, 'URL is too long')
   .transform((val) => val.trim())
-  .refine(
-    (val) => {
-      // Add https:// if missing
-      if (!val.startsWith('http://') && !val.startsWith('https://')) {
-        return `https://${val}`;
-      }
-      return val;
-    },
-    { message: 'Invalid URL format' }
+  .transform((val) =>
+    val.startsWith('http://') || val.startsWith('https://') ? val : `https://${val}`
   )
   .refine(
     (val) => {
       try {
-        new URL(val.startsWith('http') ? val : `https://${val}`);
+        new URL(val);
         return true;
       } catch {
         return false;
@@ -31,13 +24,10 @@ export const urlSchema = z
     { message: 'Please enter a valid URL (e.g., www.example.com)' }
   )
   .refine(
-    (val) => {
-      const urlPattern =
-        /^(https?:\/\/)?[\w\-\.]+\.[a-zA-Z]{2,}(\/\S*)?$/;
-      return urlPattern.test(val);
-    },
+    (val) => /^https?:\/\/[\w\-\.]+\.[a-zA-Z]{2,}(\/\S*)?$/.test(val),
     { message: 'Invalid URL format' }
-  );
+  )
+  .transform((val) => val.replace(/\/$/, ''));
 
 export const checkRequestSchema = z.object({
   url: urlSchema,

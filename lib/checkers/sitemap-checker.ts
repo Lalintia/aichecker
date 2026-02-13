@@ -6,6 +6,7 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult, createPartialResult } from './base';
+import { isSafeUrl, sanitizeContent } from '@/lib/security';
 
 export async function checkSitemap(
   url: string,
@@ -16,13 +17,23 @@ export async function checkSitemap(
     let sitemapUrls: string[] = [];
 
     // First, try to find sitemap from robots.txt
+    // Only accept URLs on the same origin to prevent SSRF via robots.txt content
     if (robotsContent) {
       const sitemapMatches = robotsContent.match(/Sitemap:\s*(.+)/gi);
       if (sitemapMatches) {
-        sitemapUrls = sitemapMatches.map((m) => {
-          const match = m.match(/Sitemap:\s*(.+)/i);
-          return match ? match[1].trim() : '';
-        }).filter(Boolean);
+        sitemapUrls = sitemapMatches
+          .map((m) => {
+            const match = m.match(/Sitemap:\s*(.+)/i);
+            return match ? match[1].trim() : '';
+          })
+          .filter((sitemapUrl) => {
+            if (!sitemapUrl) return false;
+            try {
+              return new URL(sitemapUrl).host === urlObj.host;
+            } catch {
+              return false;
+            }
+          });
       }
     }
 
@@ -34,27 +45,49 @@ export async function checkSitemap(
       ];
     }
 
-    let foundSitemap: { url: string; content: string; urls: number } | null = null;
+    let foundSitemap: { url: string; fullContent: string; content: string; urls: number } | null = null;
     const errors: string[] = [];
 
     for (const sitemapUrl of sitemapUrls) {
       try {
+        // Validate URL before fetching (SSRF protection)
+        if (!isSafeUrl(sitemapUrl)) {
+          errors.push(`${sitemapUrl}: URL not allowed`);
+          continue;
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
         
-        const response = await fetch(sitemapUrl, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
-            Accept: 'application/xml,text/xml',
-          },
-          next: { revalidate: 0 },
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
+        let response: Response;
+        try {
+          response = await fetch(sitemapUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
+              Accept: 'application/xml,text/xml',
+            },
+            redirect: 'manual',
+            next: { revalidate: 0 },
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
         if (response.ok) {
+          // Limit response size to prevent memory exhaustion (5MB max)
+          const MAX_SITEMAP_SIZE = 5 * 1024 * 1024; // 5MB
+          const contentLength = response.headers.get('content-length');
+          if (contentLength && parseInt(contentLength, 10) > MAX_SITEMAP_SIZE) {
+            errors.push(`${sitemapUrl}: Sitemap too large`);
+            continue;
+          }
           const content = await response.text();
+          if (content.length > MAX_SITEMAP_SIZE) {
+            errors.push(`${sitemapUrl}: Sitemap too large`);
+            continue;
+          }
 
           // Check if it's a valid sitemap
           if (content.includes('<urlset') || content.includes('<sitemapindex')) {
@@ -64,7 +97,8 @@ export async function checkSitemap(
 
             foundSitemap = {
               url: sitemapUrl,
-              content: content.substring(0, 500),
+              fullContent: content,
+              content: sanitizeContent(content, 500),
               urls: urlCount,
             };
             break;
@@ -86,14 +120,14 @@ export async function checkSitemap(
       });
     }
 
-    // Validate sitemap content
-    const content = foundSitemap.content;
-    const hasUrlset = content.includes('<urlset');
-    const hasSitemapIndex = content.includes('<sitemapindex');
+    // Validate against full content, not the 500-char truncated preview
+    const fullContent = foundSitemap.fullContent;
+    const hasUrlset = fullContent.includes('<urlset');
+    const hasSitemapIndex = fullContent.includes('<sitemapindex');
     const hasUrls = foundSitemap.urls > 0;
-    const hasLastmod = content.includes('<lastmod>');
-    const hasChangefreq = content.includes('<changefreq>');
-    const hasPriority = content.includes('<priority>');
+    const hasLastmod = fullContent.includes('<lastmod>');
+    const hasChangefreq = fullContent.includes('<changefreq>');
+    const hasPriority = fullContent.includes('<priority>');
 
     let score = 100;
     if (!hasUrls) score -= 30;

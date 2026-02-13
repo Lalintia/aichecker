@@ -1,5 +1,3 @@
-'use client';
-
 import { AlertCircle, AlertTriangle, Lightbulb } from 'lucide-react';
 import type { CheckResponse } from '@/lib/types/checker';
 import { RecommendationGroup } from './recommendation-group';

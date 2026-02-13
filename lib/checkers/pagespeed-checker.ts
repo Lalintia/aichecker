@@ -5,7 +5,7 @@
  */
 
 import type { CheckResult } from './base';
-import { createSuccessResult, createFailureResult } from './base';
+import { createSuccessResult } from './base';
 
 interface SpeedThreshold {
   readonly max: number;
@@ -20,57 +20,37 @@ const SPEED_THRESHOLDS: readonly SpeedThreshold[] = [
   { max: 5000, score: 40, label: 'slow' },
 ];
 
-export async function checkPageSpeed(url: string): Promise<CheckResult> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const startTime = Date.now();
-    const response = await fetch(url, {
-      method: 'GET',
-      next: { revalidate: 0 },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    const loadTime = Date.now() - startTime;
-
-    if (!response.ok) {
-      return createFailureResult(`Failed to measure: HTTP ${response.status}`, {
-        status: response.status,
-      });
+/**
+ * Evaluates page speed using the TTFB measured during the initial HTML fetch
+ * in the API route. This avoids a duplicate HTTP request to the target site.
+ */
+export function checkPageSpeed(ttfb: number): CheckResult {
+  // Determine score based on response time
+  let score = 20;
+  let label = 'very slow';
+  for (const threshold of SPEED_THRESHOLDS) {
+    if (ttfb < threshold.max) {
+      score = threshold.score;
+      label = threshold.label;
+      break;
     }
-
-    // Determine score based on load time
-    let score = 20;
-    let label = 'very slow';
-    for (const threshold of SPEED_THRESHOLDS) {
-      if (loadTime < threshold.max) {
-        score = threshold.score;
-        label = threshold.label;
-        break;
-      }
-    }
-
-    const warnings: string[] = [];
-    if (loadTime > 3000) {
-      warnings.push('Page is slow, needs optimization');
-    }
-
-    const data: Record<string, unknown> = {
-      loadTime,
-      label,
-      note: 'Use Google PSI API for more accurate results',
-    };
-
-    return createSuccessResult(
-      `Page loaded in ${loadTime}ms (${label})`,
-      score,
-      data,
-      warnings.length > 0 ? warnings : undefined
-    );
-  } catch (error) {
-    return createFailureResult('Unable to measure page speed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
   }
+
+  const warnings: string[] = [];
+  if (ttfb > 3000) {
+    warnings.push('Page is slow, needs optimization');
+  }
+
+  const data: Record<string, unknown> = {
+    loadTime: ttfb,
+    label,
+    note: 'Measured as server response time (TTFB). Use Google PSI API for full load metrics.',
+  };
+
+  return createSuccessResult(
+    `Server responded in ${ttfb}ms (${label})`,
+    score,
+    data,
+    warnings.length > 0 ? warnings : undefined
+  );
 }

@@ -62,8 +62,8 @@ export function RecommendationGroup({
         <span className={`ml-auto text-xs ${c.titleText} opacity-70`}>{count}</span>
       </div>
       <div className="space-y-3">
-        {items.map((item, index) => (
-          <div key={index} className={`bg-white rounded-xl p-4 border ${c.itemBorder}`}>
+        {items.map((item) => (
+          <div key={`${item.category}-${item.message}`} className={`bg-white rounded-xl p-4 border ${c.itemBorder}`}>
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-900 mb-1">{item.message}</p>

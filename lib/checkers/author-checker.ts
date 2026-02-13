@@ -5,7 +5,7 @@
  */
 
 import type { CheckResult } from './base';
-import { createSuccessResult, createPartialResult } from './base';
+import { createSuccessResult, createPartialResult, createFailureResult } from './base';
 
 interface AuthorityCheck {
   readonly name: string;
@@ -95,11 +95,5 @@ export function checkAuthorAuthority(html: string): CheckResult {
     );
   }
 
-  return {
-    found: false,
-    score: finalScore,
-    details: 'No author/publisher information found',
-    data,
-    ...(warnings.length > 0 ? { warnings } : {}),
-  };
+  return createFailureResult('No author/publisher information found', data);
 }

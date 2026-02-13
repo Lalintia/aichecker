@@ -13,7 +13,7 @@ describe('checkSchema', () => {
 
     assert.strictEqual(result.found, false);
     assert.strictEqual(result.score, 0);
-    assert.ok(result.details.includes('No Schema.org'));
+    assert.ok(result.details.includes('No Schema.org') || result.details.includes('incomplete or invalid'));
   });
 
   it('should detect schemas in HTML', () => {

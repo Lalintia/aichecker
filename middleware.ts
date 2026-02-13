@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-
-// Simple in-memory rate limiter
-// For production with multiple instances, use Redis
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-
-const RATE_LIMIT = 10; // requests
-const RATE_WINDOW = 60 * 1000; // 1 minute in milliseconds
+import { rateLimiter, RATE_LIMIT } from './lib/rate-limiter';
 
 export function middleware(request: NextRequest) {
   const response = NextResponse.next();
@@ -16,49 +10,78 @@ export function middleware(request: NextRequest) {
 
   // Only apply rate limiting to API routes
   if (request.nextUrl.pathname.startsWith('/api/')) {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
-      ?? request.headers.get('x-real-ip') 
-      ?? 'unknown';
-    const now = Date.now();
+    // Get client IP - prefer connection info over headers (prevents spoofing)
+    // In production with trusted reverse proxy, use x-forwarded-for
+    // For now, use a combination approach that's safer
+    const ip = getClientIp(request);
 
-    const record = rateLimitMap.get(ip);
+    // Skip per-IP rate limiting when the client IP cannot be determined.
+    // In this case, rely on infrastructure-level rate limiting (Nginx/Cloudflare).
+    // Keying on 'unknown' would unfairly throttle all such clients with one shared bucket.
+    if (ip === 'unknown') {
+      return response;
+    }
 
-    if (!record || now > record.resetTime) {
-      // First request or window expired
-      rateLimitMap.set(ip, {
-        count: 1,
-        resetTime: now + RATE_WINDOW,
-      });
-    } else {
-      // Increment counter
-      record.count++;
+    const result = rateLimiter.check(ip);
 
-      if (record.count > RATE_LIMIT) {
-        // Rate limit exceeded
-        return NextResponse.json(
-          {
-            error: 'Too many requests. Please try again later.',
-            retryAfter: Math.ceil((record.resetTime - now) / 1000),
+    if (!result.allowed) {
+      // Rate limit exceeded
+      return NextResponse.json(
+        {
+          error: 'Too many requests. Please try again later.',
+          retryAfter: result.retryAfter,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(result.retryAfter),
           },
-          {
-            status: 429,
-            headers: {
-              'Retry-After': String(Math.ceil((record.resetTime - now) / 1000)),
-            },
-          }
-        );
-      }
+        }
+      );
     }
 
     // Add rate limit headers
     response.headers.set('X-RateLimit-Limit', String(RATE_LIMIT));
-    response.headers.set(
-      'X-RateLimit-Remaining',
-      String(Math.max(0, RATE_LIMIT - (record?.count ?? 1)))
-    );
+    response.headers.set('X-RateLimit-Remaining', String(result.remaining));
   }
 
   return response;
+}
+
+/**
+ * Get client IP with spoofing protection.
+ * Uses x-forwarded-for last entry — the IP appended by the closest trusted reverse proxy
+ * (Nginx/Cloudflare). The last entry is the least spoofable since it is added by
+ * the server-side proxy, not the client.
+ *
+ * NOTE: Do NOT trust x-real-ip — it can be freely set by any client.
+ */
+function getClientIp(request: NextRequest): string {
+  // Use x-forwarded-for last entry (appended by trusted reverse proxy)
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    const ips = forwardedFor.split(',').map((ip) => ip.trim()).filter(isValidIpFormat);
+    if (ips.length > 0) {
+      return ips[ips.length - 1];
+    }
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Basic IP format validation
+ */
+function isValidIpFormat(ip: string): boolean {
+  // Basic validation - reject empty, localhost, or obviously fake values
+  if (!ip || ip === 'unknown') return false;
+  if (ip === 'localhost' || ip === '127.0.0.1' || ip === '::1') return false;
+  
+  // Check for valid IPv4 or IPv6 format
+  const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6Pattern = /^[0-9a-fA-F:]+$/;
+  
+  return ipv4Pattern.test(ip) || ipv6Pattern.test(ip);
 }
 
 export const config = {

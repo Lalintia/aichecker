@@ -12,17 +12,20 @@ export interface Checker {
   check(url: string, html: string): Promise<CheckResult> | CheckResult;
 }
 
+// Updated weights for AI Search readiness (2025)
+// Focus on factors that actually impact AI Search visibility
+// Total: 100%
 export const weights = {
-  schema: 20,
-  robotsTxt: 15,
-  llmsTxt: 15,
-  sitemap: 10,
-  openGraph: 15,
-  semanticHTML: 5,
-  headingHierarchy: 5,
-  faqBlocks: 5,
-  pageSpeed: 5,
-  authorAuthority: 5,
+  schema: 25,           // Increased: Most important for AI understanding
+  robotsTxt: 20,        // Increased: Controls AI bot access
+  sitemap: 15,          // Increased: Helps AI discover content
+  pageSpeed: 10,        // Increased: Core Web Vitals matter for crawling
+  semanticHTML: 10,     // Increased: Better structure helps AI parse content
+  headingHierarchy: 10, // Increased: Clear document structure
+  faqBlocks: 3,         // Decreased: Optional enhancement
+  authorAuthority: 2,   // Decreased: Important for YMYL but not all sites
+  llmsTxt: 5,           // Decreased: New standard, adoption still low
+  openGraph: 0,         // Removed: Social media only, not AI Search
 } as const;
 
 export type CheckType = keyof typeof weights;
@@ -96,14 +99,8 @@ export function generateRecommendations(
     });
   }
 
-  if (!checks.openGraph.found || checks.openGraph.score! < 80) {
-    recommendations.push({
-      priority: 'medium',
-      category: 'Open Graph',
-      message: 'Open Graph is incomplete',
-      action: 'Add og:title, og:description, og:image, og:type',
-    });
-  }
+  // Open Graph removed - not relevant for AI Search
+  // Keeping for backward compatibility but no recommendations
 
   if (!checks.semanticHTML.found) {
     recommendations.push({

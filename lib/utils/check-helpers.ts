@@ -6,52 +6,52 @@ export const checkLabels: Record<CheckType, CheckLabel> = {
   schema: {
     title: 'Schema.org (JSON-LD)',
     description: 'Structured data for AI to understand content',
-    weight: 20,
+    weight: 25,
   },
   robotsTxt: {
     title: 'robots.txt',
     description: 'Tells AI which pages to access',
-    weight: 15,
+    weight: 20,
   },
   llmsTxt: {
     title: 'llms.txt',
     description: 'Data usage policy for AI',
-    weight: 15,
+    weight: 5,
   },
   sitemap: {
     title: 'Sitemap.xml',
     description: 'Site map for AI discovery',
-    weight: 10,
+    weight: 15,
   },
   openGraph: {
     title: 'Open Graph & Twitter Cards',
-    description: 'Meta tags for preview display',
-    weight: 15,
+    description: 'Meta tags for preview display (social only)',
+    weight: 0,
   },
   semanticHTML: {
     title: 'Semantic HTML',
     description: 'Meaningful HTML structure',
-    weight: 5,
+    weight: 10,
   },
   headingHierarchy: {
     title: 'Heading Hierarchy',
     description: 'Clear H1 → H2 → H3 order',
-    weight: 5,
+    weight: 10,
   },
   faqBlocks: {
     title: 'FAQ/QA Blocks',
     description: 'Question-answer format for AI',
-    weight: 5,
+    weight: 3,
   },
   pageSpeed: {
     title: 'Page Speed',
     description: 'Page loading performance',
-    weight: 5,
+    weight: 10,
   },
   authorAuthority: {
     title: 'Author Authority (EEAT)',
     description: 'Author info and credibility',
-    weight: 5,
+    weight: 2,
   },
 };
 

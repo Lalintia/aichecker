@@ -21,80 +21,53 @@ import {
   calculateOverallScore,
   generateRecommendations,
 } from '@/lib/checkers';
+import { checkRequestSchema } from '@/lib/validations/url';
+import { isSafeUrlWithDns, safeFetch } from '@/lib/security';
 
-// URL normalization utilities
-function normalizeUrl(url: string): string {
-  let normalized = url.trim();
-  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-    normalized = `https://${normalized}`;
-  }
-  return normalized.replace(/\/$/, '');
-}
-
-// SSRF protection - block internal IPs
-function isInternalIp(url: string): boolean {
-  try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname;
-    
-    // Block localhost
-    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
-    
-    // Block private IP ranges
-    const privateRanges = [
-      /^10\./,                              // 10.0.0.0/8
-      /^172\.(1[6-9]|2[0-9]|3[01])\./,     // 172.16.0.0/12
-      /^192\.168\./,                        // 192.168.0.0/16
-      /^127\./,                             // 127.0.0.0/8
-      /^169\.254\./,                        // Link-local
-      /^0\./,                               // 0.0.0.0/8
-      /^::1$/,                              // IPv6 localhost
-      /^fc00:/i,                            // IPv6 private
-      /^fe80:/i,                            // IPv6 link-local
-    ];
-    
-    return privateRanges.some((range) => range.test(hostname));
-  } catch {
-    return true; // Invalid URL, treat as blocked
-  }
-}
 
 // API Route Handler
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json();
-
-    if (!url) {
+    const body = await request.json();
+    const parsed = checkRequestSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Please enter a URL' },
+        { error: parsed.error.issues[0]?.message ?? 'Invalid URL' },
         { status: 400 }
       );
     }
 
-    const normalizedUrl = normalizeUrl(url);
+    // Zod schema already trims, adds https://, and removes trailing slash
+    const normalizedUrl = parsed.data.url;
 
-    // SSRF protection
-    if (isInternalIp(normalizedUrl)) {
+    // SSRF protection — string check + real DNS resolution to block rebinding
+    if (!(await isSafeUrlWithDns(normalizedUrl))) {
       return NextResponse.json(
         { error: 'Invalid URL. Cannot scan internal addresses.' },
         { status: 400 }
       );
     }
 
-    // Fetch HTML once with timeout
+    // Fetch HTML once with timeout — measure TTFB for pagespeed check
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
-    
-    const pageResponse = await fetch(normalizedUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
-        Accept: 'text/html',
-      },
-      next: { revalidate: 0 },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+
+    let pageResponse: Response;
+    const fetchStart = Date.now();
+    try {
+      pageResponse = await safeFetch(normalizedUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
+          Accept: 'text/html',
+        },
+        next: { revalidate: 0 },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    const pageTtfb = Date.now() - fetchStart;
 
     if (!pageResponse.ok) {
       return NextResponse.json(
@@ -103,14 +76,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Limit response size — check Content-Length header first to avoid buffering large bodies
+    const MAX_HTML_SIZE = 10 * 1024 * 1024; // 10MB
+    const contentLengthHeader = pageResponse.headers.get('content-length');
+    if (contentLengthHeader && parseInt(contentLengthHeader, 10) > MAX_HTML_SIZE) {
+      return NextResponse.json(
+        { error: 'Website content too large to analyze' },
+        { status: 400 }
+      );
+    }
     const html = await pageResponse.text();
+    if (html.length > MAX_HTML_SIZE) {
+      return NextResponse.json(
+        { error: 'Website content too large to analyze' },
+        { status: 400 }
+      );
+    }
 
-    // Run all checks
+    // Run all checks with individual error handling
+    // Each check is wrapped to prevent one failure from killing all checks
+    const safeCheck = async <T,>(name: string, checkFn: () => Promise<T> | T, defaultValue: T): Promise<T> => {
+      try {
+        return await checkFn();
+      } catch (err) {
+        console.error(`[${name}] checker error for ${normalizedUrl}:`, err instanceof Error ? err.message : err);
+        return defaultValue;
+      }
+    };
+
+    // Phase 1: fetch robots.txt first — its content is needed by the sitemap checker.
+    // Running it separately avoids a second sequential sitemap check after Promise.all.
+    const robotsResult = await safeCheck(
+      'robotsTxt',
+      () => checkRobotsTxt(normalizedUrl),
+      { found: false, score: 0, details: 'Check failed', data: {} }
+    );
+    const robotsContent =
+      robotsResult.found && robotsResult.data?.content
+        ? String(robotsResult.data.content)
+        : undefined;
+
+    // Phase 2: run all remaining checks in parallel, passing robots content to sitemap
     const [
       schemaResult,
-      robotsResult,
       llmsResult,
-      initialSitemapResult,
+      sitemapResult,
       ogResult,
       semanticResult,
       headingResult,
@@ -118,31 +128,16 @@ export async function POST(request: NextRequest) {
       speedResult,
       authorResult,
     ] = await Promise.all([
-      Promise.resolve(checkSchema(normalizedUrl, html)),
-      checkRobotsTxt(normalizedUrl),
-      checkLlmsTxt(normalizedUrl),
-      checkSitemap(normalizedUrl, undefined),
-      Promise.resolve(checkOpenGraph(html)),
-      Promise.resolve(checkSemanticHTML(html)),
-      Promise.resolve(checkHeadingHierarchy(html)),
-      Promise.resolve(checkFAQBlocks(html)),
-      checkPageSpeed(normalizedUrl),
-      Promise.resolve(checkAuthorAuthority(html)),
+      safeCheck('schema', () => checkSchema(normalizedUrl, html), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('llmsTxt', () => checkLlmsTxt(normalizedUrl), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('sitemap', () => checkSitemap(normalizedUrl, robotsContent), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('openGraph', () => checkOpenGraph(html), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('semanticHTML', () => checkSemanticHTML(html), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('headingHierarchy', () => checkHeadingHierarchy(html), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('faqBlocks', () => checkFAQBlocks(html), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('pageSpeed', () => checkPageSpeed(pageTtfb), { found: false, score: 0, details: 'Check failed', data: {} }),
+      safeCheck('authorAuthority', () => checkAuthorAuthority(html), { found: false, score: 0, details: 'Check failed', data: {} }),
     ]);
-
-    // If robots.txt exists, check sitemap again with robots data
-    let sitemapResult = initialSitemapResult;
-    if (robotsResult.found && robotsResult.data?.content) {
-      const content = String(robotsResult.data.content);
-      const updatedSitemap = await checkSitemap(normalizedUrl, content);
-      if (updatedSitemap.found) {
-        // Create new result with merged data (respecting readonly)
-        sitemapResult = {
-          ...initialSitemapResult,
-          data: { ...initialSitemapResult.data, ...updatedSitemap.data },
-        };
-      }
-    }
 
     const checks = {
       schema: schemaResult,
@@ -184,7 +179,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Check error:', error);
+    console.error('Check error:', error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       { error: 'Analysis failed. Please try again.' },
       { status: 500 }

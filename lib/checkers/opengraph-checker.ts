@@ -11,14 +11,32 @@ interface OGProperty {
   readonly name: string;
   readonly weight: number;
   readonly required: boolean;
+  readonly propPattern: RegExp;
+  readonly namePattern: RegExp;
+  readonly contentPattern: RegExp;
 }
 
 const OG_PROPERTIES: readonly OGProperty[] = [
-  { name: 'og:title', weight: 25, required: true },
-  { name: 'og:description', weight: 25, required: true },
-  { name: 'og:image', weight: 25, required: true },
-  { name: 'og:type', weight: 15, required: true },
-  { name: 'og:url', weight: 10, required: false },
+  { name: 'og:title', weight: 25, required: true,
+    propPattern: /<meta[^>]+property=["']og:title["'][^>]*>/i,
+    namePattern: /<meta[^>]+name=["']og:title["'][^>]*>/i,
+    contentPattern: /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i },
+  { name: 'og:description', weight: 25, required: true,
+    propPattern: /<meta[^>]+property=["']og:description["'][^>]*>/i,
+    namePattern: /<meta[^>]+name=["']og:description["'][^>]*>/i,
+    contentPattern: /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i },
+  { name: 'og:image', weight: 25, required: true,
+    propPattern: /<meta[^>]+property=["']og:image["'][^>]*>/i,
+    namePattern: /<meta[^>]+name=["']og:image["'][^>]*>/i,
+    contentPattern: /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i },
+  { name: 'og:type', weight: 15, required: true,
+    propPattern: /<meta[^>]+property=["']og:type["'][^>]*>/i,
+    namePattern: /<meta[^>]+name=["']og:type["'][^>]*>/i,
+    contentPattern: /<meta[^>]+property=["']og:type["'][^>]+content=["']([^"']+)["']/i },
+  { name: 'og:url', weight: 10, required: false,
+    propPattern: /<meta[^>]+property=["']og:url["'][^>]*>/i,
+    namePattern: /<meta[^>]+name=["']og:url["'][^>]*>/i,
+    contentPattern: /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i },
 ];
 
 export function checkOpenGraph(html: string): CheckResult {
@@ -28,15 +46,7 @@ export function checkOpenGraph(html: string): CheckResult {
   let weightedScore = 0;
 
   for (const prop of OG_PROPERTIES) {
-    // Check for property="name" format
-    const propPattern = new RegExp(
-      `<meta[^>]+property=["']${prop.name}["'][^>]*>`,
-      'i'
-    );
-    // Check for name="name" format (alternate)
-    const namePattern = new RegExp(`<meta[^>]+name=["']${prop.name}["'][^>]*>`, 'i');
-
-    const hasProperty = propPattern.test(html) || namePattern.test(html);
+    const hasProperty = prop.propPattern.test(html) || prop.namePattern.test(html);
 
     if (hasProperty) {
       found.push(prop.name);
@@ -49,14 +59,10 @@ export function checkOpenGraph(html: string): CheckResult {
     }
   }
 
-  // Extract values for additional validation
+  // Extract values for additional validation using pre-compiled patterns
   const extracted: Record<string, string> = {};
   for (const prop of OG_PROPERTIES) {
-    const regex = new RegExp(
-      `<meta[^>]+property=["']${prop.name}["'][^>]+content=["']([^"']+)["']`,
-      'i'
-    );
-    const match = html.match(regex);
+    const match = html.match(prop.contentPattern);
     if (match) {
       extracted[prop.name] = match[1];
     }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { HeroSection } from '@/components/features/checker/hero-section';
 import { ResultsView } from '@/components/features/results/results-view';
 import type { CheckResponse } from '@/lib/types/checker';
@@ -9,20 +9,20 @@ export default function HomePage(): React.ReactElement {
   const [result, setResult] = useState<CheckResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSuccess = (data: CheckResponse): void => {
+  const handleSuccess = useCallback((data: CheckResponse): void => {
     setResult(data);
     setError(null);
-  };
+  }, []);
 
-  const handleError = (err: string): void => {
+  const handleError = useCallback((err: string): void => {
     setError(err);
     setResult(null);
-  };
+  }, []);
 
-  const handleReset = (): void => {
+  const handleReset = useCallback((): void => {
     setResult(null);
     setError(null);
-  };
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#f8f9fa]">
@@ -37,8 +37,12 @@ export default function HomePage(): React.ReactElement {
 
         {error && (
           <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20">
-            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center">
-              <h2 className="text-rose-700 font-semibold text-lg mb-2">Error</h2>
+            <div
+            className="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center"
+            role="alert"
+            aria-live="assertive"
+          >
+              <h1 className="text-rose-700 font-semibold text-lg mb-2">Error</h1>
               <p className="text-rose-600 mb-4">{error}</p>
               <button
                 onClick={handleReset}

@@ -40,32 +40,32 @@ interface StatCardProps {
   readonly color: 'emerald' | 'amber' | 'rose';
 }
 
-function StatCard({ icon, value, label, color }: StatCardProps): React.ReactElement {
-  const colors = {
-    emerald: {
-      bg: 'bg-emerald-50',
-      text: 'text-emerald-700',
-      iconBg: 'bg-emerald-100',
-      iconColor: 'text-emerald-600',
-      border: 'border-emerald-100',
-    },
-    amber: {
-      bg: 'bg-amber-50',
-      text: 'text-amber-700',
-      iconBg: 'bg-amber-100',
-      iconColor: 'text-amber-600',
-      border: 'border-amber-100',
-    },
-    rose: {
-      bg: 'bg-rose-50',
-      text: 'text-rose-700',
-      iconBg: 'bg-rose-100',
-      iconColor: 'text-rose-600',
-      border: 'border-rose-100',
-    },
-  };
+const STAT_CARD_COLORS = {
+  emerald: {
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    iconBg: 'bg-emerald-100',
+    iconColor: 'text-emerald-600',
+    border: 'border-emerald-100',
+  },
+  amber: {
+    bg: 'bg-amber-50',
+    text: 'text-amber-700',
+    iconBg: 'bg-amber-100',
+    iconColor: 'text-amber-600',
+    border: 'border-amber-100',
+  },
+  rose: {
+    bg: 'bg-rose-50',
+    text: 'text-rose-700',
+    iconBg: 'bg-rose-100',
+    iconColor: 'text-rose-600',
+    border: 'border-rose-100',
+  },
+} as const;
 
-  const c = colors[color];
+function StatCard({ icon, value, label, color }: StatCardProps): React.ReactElement {
+  const c = STAT_CARD_COLORS[color];
 
   return (
     <div className={`${c.bg} rounded-2xl p-4 text-center border ${c.border}`}>

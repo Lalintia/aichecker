@@ -1,0 +1,113 @@
+/**
+ * Rate limiter with automatic cleanup of expired entries
+ * Prevents memory exhaustion from accumulated IP records
+ */
+
+interface RateLimitRecord {
+  count: number;
+  resetTime: number;
+}
+
+const RATE_LIMIT = 10; // requests
+const RATE_WINDOW = 60 * 1000; // 1 minute in milliseconds
+const CLEANUP_INTERVAL = 5 * 60 * 1000; // Cleanup every 5 minutes
+
+class RateLimiter {
+  private map = new Map<string, RateLimitRecord>();
+  private lastCleanup = Date.now();
+
+  /**
+   * Check if a request should be rate limited
+   * Returns null if allowed, or retryAfter seconds if limited
+   */
+  check(ip: string): { allowed: boolean; retryAfter?: number; remaining: number } {
+    this.maybeCleanup();
+
+    const now = Date.now();
+    const record = this.map.get(ip);
+
+    if (!record || now > record.resetTime) {
+      // First request or window expired
+      this.map.set(ip, {
+        count: 1,
+        resetTime: now + RATE_WINDOW,
+      });
+      return { allowed: true, remaining: RATE_LIMIT - 1 };
+    }
+
+    // Increment counter
+    record.count++;
+
+    if (record.count > RATE_LIMIT) {
+      // Rate limit exceeded
+      const retryAfter = Math.ceil((record.resetTime - now) / 1000);
+      return { allowed: false, retryAfter, remaining: 0 };
+    }
+
+    return { allowed: true, remaining: Math.max(0, RATE_LIMIT - record.count) };
+  }
+
+  /**
+   * Get current rate limit info without incrementing
+   */
+  getInfo(ip: string): { count: number; resetTime: number; remaining: number } {
+    const now = Date.now();
+    const record = this.map.get(ip);
+
+    if (!record || now > record.resetTime) {
+      return { count: 0, resetTime: now + RATE_WINDOW, remaining: RATE_LIMIT };
+    }
+
+    return {
+      count: record.count,
+      resetTime: record.resetTime,
+      remaining: Math.max(0, RATE_LIMIT - record.count),
+    };
+  }
+
+  /**
+   * Cleanup expired entries periodically
+   */
+  private maybeCleanup(): void {
+    const now = Date.now();
+    
+    // Only cleanup every 5 minutes
+    if (now - this.lastCleanup < CLEANUP_INTERVAL) {
+      return;
+    }
+
+    this.lastCleanup = now;
+    
+    // Remove expired entries
+    for (const [ip, record] of this.map.entries()) {
+      if (now > record.resetTime) {
+        this.map.delete(ip);
+      }
+    }
+
+  }
+
+  /**
+   * Force cleanup (useful for testing)
+   */
+  cleanup(): void {
+    const now = Date.now();
+    for (const [ip, record] of this.map.entries()) {
+      if (now > record.resetTime) {
+        this.map.delete(ip);
+      }
+    }
+    this.lastCleanup = now;
+  }
+
+  /**
+   * Get current size (for monitoring)
+   */
+  get size(): number {
+    return this.map.size;
+  }
+}
+
+// Export singleton instance
+export const rateLimiter = new RateLimiter();
+export { RATE_LIMIT, RATE_WINDOW };

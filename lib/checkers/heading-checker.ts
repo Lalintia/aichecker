@@ -11,17 +11,43 @@ export function checkHeadingHierarchy(html: string): CheckResult {
   const warnings: string[] = [];
 
   // Extract all headings with their levels
+  // Use indexOf instead of [\s\S]*? regex to avoid ReDoS on malformed HTML
   const headings: { level: number; text: string }[] = [];
-  const headingRegex = /<h([1-6])[^>]*>(?:<[^>]+>)*([^<]+)(?:<\/[^>]+>)*<\/h[1-6]>/gi;
-  let match: RegExpExecArray | null;
+  let pos = 0;
 
-  while ((match = headingRegex.exec(html)) !== null) {
-    if (match[1] && match[2]) {
-      headings.push({
-        level: parseInt(match[1], 10),
-        text: match[2].trim(),
-      });
+  while (headings.length < 100 && pos < html.length) {
+    const start = html.indexOf('<h', pos);
+    if (start === -1) break;
+
+    // Confirm h1-h6, not <header>, <html>, etc.
+    const levelChar = start + 2 < html.length ? html[start + 2] : '';
+    if (!'123456'.includes(levelChar)) {
+      pos = start + 2;
+      continue;
     }
+    const charAfter = start + 3 < html.length ? html[start + 3] : '';
+    if (charAfter !== '' && charAfter !== '>' && charAfter !== ' ' &&
+        charAfter !== '\t' && charAfter !== '\n' && charAfter !== '\r') {
+      pos = start + 3;
+      continue;
+    }
+
+    const tagEnd = html.indexOf('>', start);
+    if (tagEnd === -1) break;
+
+    const contentStart = tagEnd + 1;
+    const closeTag = `</h${levelChar}>`;
+    const contentEnd = html.indexOf(closeTag, contentStart);
+    if (contentEnd === -1 || contentEnd - contentStart > 5000) {
+      pos = tagEnd + 1;
+      continue;
+    }
+
+    const text = html.slice(contentStart, contentEnd).replace(/<[^>]+>/g, '').trim();
+    if (text) {
+      headings.push({ level: parseInt(levelChar, 10), text });
+    }
+    pos = contentEnd + closeTag.length;
   }
 
   if (headings.length === 0) {
@@ -93,11 +119,10 @@ export function checkHeadingHierarchy(html: string): CheckResult {
     );
   }
 
-  return {
-    found: false,
+  return createPartialResult(
+    'Heading hierarchy has significant issues',
     score,
-    details: 'Heading hierarchy has significant issues',
     data,
-    ...(warnings.length > 0 ? { warnings } : {}),
-  };
+    warnings.length > 0 ? warnings : undefined
+  );
 }

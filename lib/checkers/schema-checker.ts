@@ -1,143 +1,309 @@
 /**
- * Schema.org Checker
+ * Schema.org Checker with Deep Validation
  * Validates JSON-LD structured data implementation
- * Weight: 20%
+ * Weight: 25% (increased from 20%)
  */
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult, createPartialResult } from './base';
+import {
+  validateOrganizationAndWebSite,
+  validateArticleSchemas,
+  validateBreadcrumbList,
+  validateWebPage,
+  validateLocalBusiness,
+  extractJsonLdScripts,
+} from './schema-validators';
+import { extractRawJsonLdScripts } from './schema-validators/jsonld-utils';
+import type {
+  SchemaValidationResult as OrgSchemaValidationResult,
+} from './schema-validators/organization-validator';
+import type {
+  ArticleValidationResult,
+  BreadcrumbListResult,
+  WebPageResult,
+  LocalBusinessResult,
+} from './schema-validators';
 
-interface SchemaType {
-  readonly name: string;
-  readonly weight: number;
-  readonly patterns: readonly RegExp[];
+interface DetailedSchemaResult {
+  organizations: OrgSchemaValidationResult[];
+  websites: OrgSchemaValidationResult[];
+  articles: ArticleValidationResult[];
+  breadcrumbLists: BreadcrumbListResult[];
+  webPages: WebPageResult[];
+  localBusinesses: LocalBusinessResult[];
+  overallScore: number;
+  totalSchemas: number;
+  validSchemas: number;
+  invalidSchemas: number;
 }
 
-const schemaTypes: readonly SchemaType[] = [
-  {
-    name: 'Organization',
-    weight: 30,
-    patterns: [/"@type"\s*:\s*"Organization"/i],
-  },
-  {
-    name: 'WebSite',
-    weight: 25,
-    patterns: [/"@type"\s*:\s*"WebSite"/i],
-  },
-  {
-    name: 'WebPage',
-    weight: 20,
-    patterns: [/"@type"\s*:\s*"WebPage"/i],
-  },
-  {
-    name: 'BreadcrumbList',
-    weight: 15,
-    patterns: [/"@type"\s*:\s*"BreadcrumbList"/i],
-  },
-  {
-    name: 'Article/BlogPosting',
-    weight: 10,
-    patterns: [/"@type"\s*:\s*"Article"/i, /"@type"\s*:\s*"BlogPosting"/i],
-  },
-];
-
 export function checkSchema(_url: string, html: string): CheckResult {
-  // Extract all JSON-LD scripts
-  const jsonLdScripts: string[] = [];
-  const scriptRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = scriptRegex.exec(html)) !== null) {
-    if (match[1]) {
-      jsonLdScripts.push(match[1]);
-    }
-  }
-
-  if (jsonLdScripts.length === 0) {
-    return createFailureResult('No Schema.org JSON-LD found', {
-      totalSchemas: 0,
-      typesFound: [],
-      missingTypes: schemaTypes.map((t) => t.name),
+  // Limit HTML size to prevent ReDoS and memory issues (5MB max)
+  const MAX_HTML_SIZE = 5 * 1024 * 1024; // 5MB
+  if (html.length > MAX_HTML_SIZE) {
+    return createFailureResult('HTML content too large to analyze', {
+      size: html.length,
+      maxSize: MAX_HTML_SIZE,
     });
   }
 
-  // Check each schema type
-  const typesFound: string[] = [];
-  const missingTypes: string[] = [];
-  let weightedScore = 0;
+  try {
+    // Run all validators
+    const orgWebSiteResult = validateOrganizationAndWebSite(html);
+    const articleResult = validateArticleSchemas(html);
+    
+    // Extract scripts for other validators
+    const scripts = extractJsonLdScripts(html);
+    
+    // Parse all schemas from scripts
+    const allSchemas: unknown[] = [];
+    for (const script of scripts) {
+      if (typeof script === 'object' && script !== null) {
+        const scriptObj = script as { readonly '@graph'?: readonly unknown[] };
+        if (scriptObj['@graph'] && Array.isArray(scriptObj['@graph'])) {
+          allSchemas.push(...scriptObj['@graph']);
+        } else {
+          allSchemas.push(script);
+        }
+      }
+    }
+    
+    // Validate BreadcrumbList, WebPage, LocalBusiness
+    const breadcrumbLists: BreadcrumbListResult[] = [];
+    const webPages: WebPageResult[] = [];
+    const localBusinesses: LocalBusinessResult[] = [];
+    
+    for (const schema of allSchemas) {
+      if (typeof schema === 'object' && schema !== null) {
+        const schemaObj = schema as Record<string, unknown>;
+        const type = schemaObj['@type'];
+        if (type === 'BreadcrumbList') {
+          const result = validateBreadcrumbList(schemaObj);
+          if (result) breadcrumbLists.push(result);
+        } else if (type === 'WebPage') {
+          const result = validateWebPage(schemaObj);
+          if (result) webPages.push(result);
+        } else if (typeof type === 'string' && 
+                   (type === 'LocalBusiness' || type.includes('Business') || 
+                    ['Restaurant', 'Store', 'Dentist', 'Hospital', 'Hotel', 'AutoRepair'].includes(type))) {
+          const result = validateLocalBusiness(schemaObj);
+          if (result) localBusinesses.push(result);
+        }
+      }
+    }
 
-  for (const schemaType of schemaTypes) {
-    const found = schemaType.patterns.some((pattern) =>
-      jsonLdScripts.some((script) => pattern.test(script))
-    );
+    // Calculate overall score
+    const detailedResult: DetailedSchemaResult = {
+      organizations: [...orgWebSiteResult.organization.results],
+      websites: [...orgWebSiteResult.website.results],
+      articles: [...articleResult.articles],
+      breadcrumbLists,
+      webPages,
+      localBusinesses,
+      overallScore: 0,
+      totalSchemas: 0,
+      validSchemas: 0,
+      invalidSchemas: 0,
+    };
 
-    if (found) {
-      typesFound.push(schemaType.name);
-      weightedScore += schemaType.weight;
+    // Count valid/invalid using raw scripts so JSON parse failures are counted
+    const rawScripts = extractRawJsonLdScripts(html);
+    let validCount = 0;
+    let invalidCount = 0;
+    for (const raw of rawScripts) {
+      try {
+        JSON.parse(raw);
+        validCount++;
+      } catch {
+        invalidCount++;
+      }
+    }
+    detailedResult.totalSchemas = rawScripts.length;
+    detailedResult.validSchemas = validCount;
+    detailedResult.invalidSchemas = invalidCount;
+
+    // Calculate weighted score
+    let totalScore = 0;
+    let maxPossibleScore = 0;
+
+    // Organization: 30% weight (critical for AI Search)
+    if (orgWebSiteResult.organization.found && orgWebSiteResult.organization.results.length > 0) {
+      totalScore += orgWebSiteResult.organization.bestScore * 0.30;
+      maxPossibleScore += 30;
+    }
+
+    // WebSite: 20% weight
+    if (orgWebSiteResult.website.found && orgWebSiteResult.website.results.length > 0) {
+      totalScore += orgWebSiteResult.website.bestScore * 0.20;
+      maxPossibleScore += 20;
+    }
+
+    // Article/BlogPosting: 15% weight
+    if (articleResult.articles.length > 0) {
+      const bestArticle = Math.max(...articleResult.articles.map(a => a.score));
+      totalScore += bestArticle * 0.15;
+      maxPossibleScore += 15;
+    }
+
+    // BreadcrumbList: 15% weight (important for navigation)
+    if (breadcrumbLists.length > 0) {
+      const bestBreadcrumb = Math.max(...breadcrumbLists.map(b => b.score));
+      totalScore += bestBreadcrumb * 0.15;
+      maxPossibleScore += 15;
+    }
+
+    // WebPage: 10% weight
+    if (webPages.length > 0) {
+      const bestWebPage = Math.max(...webPages.map(w => w.score));
+      totalScore += bestWebPage * 0.10;
+      maxPossibleScore += 10;
+    }
+
+    // LocalBusiness: 10% weight (if present)
+    if (localBusinesses.length > 0) {
+      const bestLocalBusiness = Math.max(...localBusinesses.map(l => l.score));
+      totalScore += bestLocalBusiness * 0.10;
+      maxPossibleScore += 10;
+    }
+
+    // Normalize score if not all schema types are present
+    if (maxPossibleScore > 0) {
+      detailedResult.overallScore = Math.round((totalScore / maxPossibleScore) * 100);
     } else {
-      missingTypes.push(schemaType.name);
+      detailedResult.overallScore = 0;
     }
-  }
 
-  // Validate JSON syntax
-  const validSchemas: string[] = [];
-  const invalidSchemas: string[] = [];
-
-  for (const script of jsonLdScripts) {
-    try {
-      JSON.parse(script);
-      validSchemas.push(script.substring(0, 100) + '...');
-    } catch {
-      invalidSchemas.push(script.substring(0, 100) + '...');
+    // Penalty for invalid JSON
+    if (invalidCount > 0) {
+      detailedResult.overallScore = Math.floor(detailedResult.overallScore * 0.8);
     }
-  }
 
-  const warnings: string[] = [];
-  if (invalidSchemas.length > 0) {
-    warnings.push(`${invalidSchemas.length} invalid JSON-LD script(s) found`);
-  }
-  if (!typesFound.includes('Organization')) {
-    warnings.push('Missing Organization schema (critical for AI understanding)');
-  }
-  if (!typesFound.includes('WebSite')) {
-    warnings.push('Missing WebSite schema');
-  }
+    // Generate warnings and recommendations
+    const warnings: string[] = [];
+    const recommendations: string[] = [];
 
-  const finalScore = invalidSchemas.length > 0 ? Math.floor(weightedScore * 0.5) : weightedScore;
+    if (invalidCount > 0) {
+      warnings.push(`${invalidCount} invalid JSON-LD script(s) found`);
+    }
 
-  if (finalScore >= 80) {
-    return createSuccessResult(
-      `${typesFound.length} schema types found (${typesFound.join(', ')})`,
-      finalScore,
-      {
-        totalSchemas: jsonLdScripts.length,
-        validSchemas: validSchemas.length,
-        typesFound,
-        missingTypes,
-      },
-      warnings.length > 0 ? warnings : undefined
+    if (!orgWebSiteResult.organization.found) {
+      warnings.push('Missing Organization schema (critical for AI understanding)');
+      recommendations.push('Add Organization schema with name, url, and logo');
+    } else if (orgWebSiteResult.organization.results[0]) {
+      const bestOrg = orgWebSiteResult.organization.results[0];
+      if (bestOrg.missingRequired.length > 0) {
+        warnings.push(`Organization schema missing: ${bestOrg.missingRequired.join(', ')}`);
+      }
+    }
+
+    if (!orgWebSiteResult.website.found) {
+      warnings.push('Missing WebSite schema');
+      recommendations.push('Add WebSite schema with name, url, and potentialAction (SearchAction)');
+    }
+
+    if (breadcrumbLists.length === 0) {
+      recommendations.push('Add BreadcrumbList schema to help AI understand site structure');
+    }
+
+    // Build detailed message
+    const parts: string[] = [];
+    if (orgWebSiteResult.organization.found) {
+      parts.push(`${orgWebSiteResult.organization.results.length} Organization`);
+    }
+    if (orgWebSiteResult.website.found) {
+      parts.push(`${orgWebSiteResult.website.results.length} WebSite`);
+    }
+    if (articleResult.articles.length > 0) {
+      parts.push(`${articleResult.articles.length} Article`);
+    }
+    if (breadcrumbLists.length > 0) {
+      parts.push(`${breadcrumbLists.length} BreadcrumbList`);
+    }
+    if (localBusinesses.length > 0) {
+      parts.push(`${localBusinesses.length} LocalBusiness`);
+    }
+
+    const details = parts.length > 0 
+      ? `Found: ${parts.join(', ')} (Score: ${detailedResult.overallScore}%)`
+      : 'Schema.org JSON-LD found but missing important types';
+
+    // Create result with detailed data
+    const resultData = {
+      totalSchemas: detailedResult.totalSchemas,
+      validSchemas: detailedResult.validSchemas,
+      invalidSchemas: detailedResult.invalidSchemas,
+      organizations: detailedResult.organizations.map(o => ({
+        score: o.score,
+        found: o.found,
+        missingRequired: (o as OrgSchemaValidationResult).missingRequired,
+        missingRecommended: (o as OrgSchemaValidationResult).missingRecommended,
+        errors: o.errors,
+        warnings: o.warnings,
+      })),
+      websites: detailedResult.websites.map(w => ({
+        score: w.score,
+        found: w.found,
+        missingRequired: (w as OrgSchemaValidationResult).missingRequired,
+        missingRecommended: (w as OrgSchemaValidationResult).missingRecommended,
+        errors: w.errors,
+        warnings: w.warnings,
+      })),
+      articles: detailedResult.articles.map(a => ({
+        score: a.score,
+        found: a.found,
+        missingRequired: a.missingRequired,
+        missingRecommended: a.missingRecommended,
+        errors: a.errors,
+        warnings: a.warnings,
+      })),
+      breadcrumbLists: detailedResult.breadcrumbLists.map(b => ({
+        score: b.score,
+        itemCount: b.itemCount,
+        hasValidPositions: b.hasValidPositions,
+        errors: b.errors,
+        warnings: b.warnings,
+      })),
+      localBusinesses: detailedResult.localBusinesses.map(l => ({
+        score: l.score,
+        specificType: l.specificType,
+        hasRequiredFields: l.hasRequiredFields,
+        addressValid: l.addressValid,
+        errors: l.errors,
+        warnings: l.warnings,
+      })),
+      recommendations,
+    };
+
+    if (detailedResult.overallScore >= 80) {
+      return createSuccessResult(
+        details,
+        detailedResult.overallScore,
+        resultData,
+        warnings.length > 0 ? warnings : undefined
+      );
+    }
+
+    if (detailedResult.overallScore >= 40) {
+      return createPartialResult(
+        details,
+        detailedResult.overallScore,
+        resultData,
+        warnings.length > 0 ? warnings : undefined
+      );
+    }
+
+    return createFailureResult(
+      'Schema.org JSON-LD found but incomplete or invalid',
+      resultData
     );
-  }
 
-  if (finalScore >= 40) {
-    return createPartialResult(
-      `Partial Schema: ${typesFound.length}/${schemaTypes.length} types found`,
-      finalScore,
-      {
-        totalSchemas: jsonLdScripts.length,
-        typesFound,
-        missingTypes,
-      },
-      warnings.length > 0 ? warnings : undefined
-    );
+  } catch (error) {
+    return createFailureResult('Error validating Schema.org', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
-
-  return createFailureResult(
-    'Schema.org JSON-LD found but missing important types',
-    {
-      totalSchemas: jsonLdScripts.length,
-      typesFound,
-      missingTypes: schemaTypes.map((t) => t.name),
-    }
-  );
 }
+
+// Export for testing
+export type { DetailedSchemaResult };
