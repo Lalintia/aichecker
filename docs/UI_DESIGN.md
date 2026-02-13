@@ -1,6 +1,6 @@
 # UI Design - การแสดงเอกสารอ้างอิงบนเว็บแอป
 
-> เอกสารนี้อธิบายการออกแบบ UI สำหรับแสดงเกณฑ์การตรวจสอบบน aichecker.ohmai.me
+> เอกสารนี้อธิบายการออกแบบ UI สำหรับแสดงเกณฑ์การตรวจสอบบน aicheck.ohmai.me
 
 ---
 
@@ -65,7 +65,7 @@
 
 ### URL
 ```
-https://aichecker.ohmai.me/docs/validation-criteria
+https://aicheck.ohmai.me/docs/validation-criteria
 ```
 
 ### Layout

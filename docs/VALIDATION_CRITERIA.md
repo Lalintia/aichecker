@@ -1,6 +1,6 @@
 # AI Search Checker - เกณฑ์การตรวจสอบ
 
-> **เอกสารอ้างอิงมาตรฐานการตรวจสอบ** สำหรับ AI Search Checker (aichecker.ohmai.me)
+> **เอกสารอ้างอิงมาตรฐานการตรวจสอบ** สำหรับ AI Search Checker (aicheck.ohmai.me)
 > 
 > อัปเดตล่าสุด: กุมภาพันธ์ 2026
 
