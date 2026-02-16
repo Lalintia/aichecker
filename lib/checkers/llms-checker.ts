@@ -6,7 +6,7 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult } from './base';
-import { isSafeUrl, sanitizeContent } from '@/lib/security';
+import { isSafeUrlWithDns, safeFetch, sanitizeContent } from '@/lib/security';
 
 const MAX_LLMS_SIZE = 512 * 1024; // 512KB
 
@@ -15,7 +15,7 @@ export async function checkLlmsTxt(url: string): Promise<CheckResult> {
     const urlObj = new URL(url);
     const llmsUrl = `${urlObj.protocol}//${urlObj.host}/llms.txt`;
 
-    if (!isSafeUrl(llmsUrl)) {
+    if (!(await isSafeUrlWithDns(llmsUrl))) {
       return createFailureResult('llms.txt URL is not allowed', { url: llmsUrl });
     }
 
@@ -24,13 +24,12 @@ export async function checkLlmsTxt(url: string): Promise<CheckResult> {
 
     let response: Response;
     try {
-      response = await fetch(llmsUrl, {
+      response = await safeFetch(llmsUrl, {
         method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
           Accept: 'text/plain',
         },
-        redirect: 'manual',
         next: { revalidate: 0 },
         signal: controller.signal,
       });

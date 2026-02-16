@@ -70,7 +70,7 @@ export function UrlForm({ onSuccess, onError }: UrlFormProps): React.ReactElemen
             placeholder="www.example.com"
             autoComplete="url"
             required
-            className={`w-full bg-gray-50 border rounded-xl pl-11 pr-4 py-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${
+            className={`w-full bg-gray-50 border rounded-xl pl-11 pr-4 py-4 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${
               clientError ? 'border-rose-300 bg-rose-50/50' : 'border-gray-200'
             }`}
             aria-required="true"
@@ -94,12 +94,12 @@ export function UrlForm({ onSuccess, onError }: UrlFormProps): React.ReactElemen
       >
         {isLoading ? (
           <>
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
             <span>Analyzing...</span>
           </>
         ) : (
           <>
-            <Search className="h-5 w-5" />
+            <Search className="h-5 w-5" aria-hidden="true" />
             <span>Analyze Website</span>
           </>
         )}

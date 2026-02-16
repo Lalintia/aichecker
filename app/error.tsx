@@ -10,8 +10,7 @@ interface ErrorBoundaryProps {
 
 export default function ErrorBoundary({ error, reset }: ErrorBoundaryProps): React.ReactElement {
   useEffect(() => {
-    // Log to error tracking service
-    console.error('ErrorBoundary caught:', error);
+    // TODO: replace with error tracking service (e.g. Sentry) when available
   }, [error]);
 
   return (

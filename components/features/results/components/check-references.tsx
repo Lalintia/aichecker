@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
+import Link from "next/link";
 import { BookOpen, ExternalLink, ChevronDown, ChevronUp, X } from "lucide-react";
 
 // Reference data for each check topic
@@ -192,7 +193,7 @@ interface CheckReferenceButtonProps {
   readonly checkType: string;
 }
 
-export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
+export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps): React.ReactElement | null {
   const [open, setOpen] = useState(false);
   const [expandedChecks, setExpandedChecks] = useState(true);
   const [expandedStandards, setExpandedStandards] = useState(true);
@@ -200,6 +201,12 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
+  // Unique IDs per instance prevent duplicate id attributes when multiple modals mount
+  const dialogId = useId();
+  const titleId = `${dialogId}-title`;
+  const descriptionId = `${dialogId}-description`;
+  const checksListId = `${dialogId}-checks-list`;
+  const standardsListId = `${dialogId}-standards-list`;
 
   // All hooks must come before any conditional return (Rules of Hooks)
   useEffect(() => {
@@ -248,7 +255,6 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
   const reference = checkReferences[checkType];
 
   if (!reference) {
-    console.warn(`CheckReferenceButton: Unknown checkType "${checkType}"`);
     return null;
   }
 
@@ -275,19 +281,20 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
             ref={modalRef}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="ref-dialog-title"
+            aria-labelledby={titleId}
+            aria-describedby={descriptionId}
             className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col"
           >
             {/* Header */}
             <div className="flex items-start justify-between px-6 py-4 border-b">
               <div>
-                <h2 id="ref-dialog-title" className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                <h2 id={titleId} className="text-xl font-semibold text-gray-900 flex items-center gap-2">
                   {reference.title}
                   <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full">
                     Weight {reference.weight}
                   </span>
                 </h2>
-                <p className="text-sm text-gray-500 mt-1">
+                <p id={descriptionId} className="text-sm text-gray-500 mt-1">
                   {reference.description}
                 </p>
               </div>
@@ -295,7 +302,7 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
                 ref={closeButtonRef}
                 onClick={() => setOpen(false)}
                 className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-                aria-label="Close"
+                aria-label={`Close ${reference.title} reference`}
               >
                 <X className="h-5 w-5 text-gray-500" />
               </button>
@@ -319,7 +326,7 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
                 <button
                   onClick={() => setExpandedChecks(!expandedChecks)}
                   aria-expanded={expandedChecks}
-                  aria-controls="ref-checks-list"
+                  aria-controls={checksListId}
                   className="flex items-center gap-2 w-full text-left group mb-3"
                 >
                   <h4 className="font-medium text-sm text-gray-900 flex items-center gap-2">
@@ -336,7 +343,7 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
                 </button>
                 
                 {expandedChecks && (
-                  <ul id="ref-checks-list" className="space-y-2 pl-6">
+                  <ul id={checksListId} className="space-y-2 pl-6">
                     {reference.checks.map((check) => (
                       <li
                         key={check}
@@ -355,7 +362,7 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
                 <button
                   onClick={() => setExpandedStandards(!expandedStandards)}
                   aria-expanded={expandedStandards}
-                  aria-controls="ref-standards-list"
+                  aria-controls={standardsListId}
                   className="flex items-center gap-2 w-full text-left group mb-3"
                 >
                   <h4 className="font-medium text-sm text-gray-900 flex items-center gap-2">
@@ -372,7 +379,7 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
                 </button>
                 
                 {expandedStandards && (
-                  <div id="ref-standards-list" className="space-y-2">
+                  <div id={standardsListId} className="space-y-2">
                     {reference.standards.map((standard) => (
                       <a
                         key={standard.url}
@@ -415,13 +422,13 @@ export function CheckReferenceButton({ checkType }: CheckReferenceButtonProps) {
 // View all criteria button (for Header or Footer)
 export function ViewAllCriteriaButton(): React.ReactElement {
   return (
-    <a
+    <Link
       href="/docs/validation-criteria"
       className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors"
     >
-      <BookOpen className="h-4 w-4" />
+      <BookOpen className="h-4 w-4" aria-hidden="true" />
       View all validation criteria
-      <ExternalLink className="h-3 w-3" />
-    </a>
+      <ExternalLink className="h-3 w-3" aria-hidden="true" />
+    </Link>
   );
 }

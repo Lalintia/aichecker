@@ -6,7 +6,7 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult, createPartialResult } from './base';
-import { isSafeUrl, sanitizeContent } from '@/lib/security';
+import { isSafeUrlWithDns, safeFetch, sanitizeContent } from '@/lib/security';
 
 const MAX_ROBOTS_SIZE = 1 * 1024 * 1024; // 1MB
 
@@ -24,7 +24,7 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
     const urlObj = new URL(url);
     const robotsUrl = `${urlObj.protocol}//${urlObj.host}/robots.txt`;
 
-    if (!isSafeUrl(robotsUrl)) {
+    if (!(await isSafeUrlWithDns(robotsUrl))) {
       return createFailureResult('robots.txt URL is not allowed', { url: robotsUrl });
     }
 
@@ -33,13 +33,12 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
 
     let response: Response;
     try {
-      response = await fetch(robotsUrl, {
+      response = await safeFetch(robotsUrl, {
         method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
           Accept: 'text/plain',
         },
-        redirect: 'manual',
         next: { revalidate: 0 },
         signal: controller.signal,
       });
@@ -154,6 +153,9 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
           blockedBots,
           allowedBots,
           content: safeContent,
+          // rawContent: used internally by sitemap-checker to extract Sitemap: URLs
+          // Must NOT be HTML-escaped so that URLs with & characters parse correctly.
+          rawContent: content.slice(0, 1000),
         },
         warnings.length > 0 ? warnings : undefined
       );
@@ -170,6 +172,8 @@ export async function checkRobotsTxt(url: string): Promise<CheckResult> {
         blockedBots,
         allowedBots,
         content: safeContent,
+        // rawContent: used internally by sitemap-checker to extract Sitemap: URLs
+        rawContent: content.slice(0, 1000),
       },
       warnings.length > 0 ? warnings : undefined
     );

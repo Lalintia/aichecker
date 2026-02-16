@@ -32,9 +32,9 @@ export function checkSemanticHTML(html: string): CheckResult {
   const sectionCount = (html.match(/<section/gi) || []).length;
   const articleCount = (html.match(/<article/gi) || []).length;
 
+  const htmlLower = html.toLowerCase();
   for (const element of SEMANTIC_ELEMENTS) {
-    const regex = new RegExp(element.tag, 'i');
-    const hasElement = regex.test(html);
+    const hasElement = htmlLower.includes(element.tag);
 
     if (hasElement) {
       found.push(element.tag.replace('<', ''));

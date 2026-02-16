@@ -11,6 +11,7 @@ interface RateLimitRecord {
 const RATE_LIMIT = 10; // requests
 const RATE_WINDOW = 60 * 1000; // 1 minute in milliseconds
 const CLEANUP_INTERVAL = 5 * 60 * 1000; // Cleanup every 5 minutes
+const MAX_ENTRIES = 100_000; // Hard cap to prevent memory exhaustion from IP flooding
 
 class RateLimiter {
   private map = new Map<string, RateLimitRecord>();
@@ -27,6 +28,10 @@ class RateLimiter {
     const record = this.map.get(ip);
 
     if (!record || now > record.resetTime) {
+      // Hard cap: if Map is full, block new IPs until cleanup frees space
+      if (!record && this.map.size >= MAX_ENTRIES) {
+        return { allowed: false, retryAfter: 60, remaining: 0 };
+      }
       // First request or window expired
       this.map.set(ip, {
         count: 1,

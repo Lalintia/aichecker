@@ -6,6 +6,7 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult, createPartialResult } from './base';
+import { sanitizeContent } from '@/lib/security';
 
 interface OGProperty {
   readonly name: string;
@@ -59,12 +60,16 @@ export function checkOpenGraph(html: string): CheckResult {
     }
   }
 
-  // Extract values for additional validation using pre-compiled patterns
+  // Extract values for additional validation using pre-compiled patterns.
+  // Length checks run on raw values before sanitization to avoid counting
+  // HTML entities (e.g. &amp; = 5 chars) as part of the original content length.
+  const rawExtracted: Record<string, string> = {};
   const extracted: Record<string, string> = {};
   for (const prop of OG_PROPERTIES) {
     const match = html.match(prop.contentPattern);
     if (match) {
-      extracted[prop.name] = match[1];
+      rawExtracted[prop.name] = match[1];
+      extracted[prop.name] = sanitizeContent(match[1], 500);
     }
   }
 
@@ -76,13 +81,13 @@ export function checkOpenGraph(html: string): CheckResult {
     }
   }
 
-  // Validate title length
-  if (extracted['og:title'] && extracted['og:title'].length > 60) {
+  // Validate title length (use raw value to avoid entity inflation)
+  if (rawExtracted['og:title'] && rawExtracted['og:title'].length > 60) {
     warnings.push('og:title is too long (>60 chars)');
   }
 
-  // Validate description length
-  if (extracted['og:description'] && extracted['og:description'].length > 200) {
+  // Validate description length (use raw value to avoid entity inflation)
+  if (rawExtracted['og:description'] && rawExtracted['og:description'].length > 200) {
     warnings.push('og:description is too long (>200 chars)');
   }
 

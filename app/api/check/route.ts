@@ -28,6 +28,11 @@ import { isSafeUrlWithDns, safeFetch } from '@/lib/security';
 // API Route Handler
 export async function POST(request: NextRequest) {
   try {
+    // Reject oversized request bodies before buffering (max ~4KB covers any valid URL)
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > 4096) {
+      return NextResponse.json({ error: 'Request body too large' }, { status: 413 });
+    }
     const body = await request.json();
     const parsed = checkRequestSchema.safeParse(body);
     if (!parsed.success) {
@@ -111,9 +116,11 @@ export async function POST(request: NextRequest) {
       () => checkRobotsTxt(normalizedUrl),
       { found: false, score: 0, details: 'Check failed', data: {} }
     );
+    // Use rawContent (unescaped) so that Sitemap: URLs with & chars parse correctly.
+    // Falling back to content (HTML-escaped) would corrupt URLs like ?foo=1&bar=2.
     const robotsContent =
-      robotsResult.found && robotsResult.data?.content
-        ? String(robotsResult.data.content)
+      robotsResult.found && (robotsResult.data?.rawContent ?? robotsResult.data?.content)
+        ? String(robotsResult.data.rawContent ?? robotsResult.data.content)
         : undefined;
 
     // Phase 2: run all remaining checks in parallel, passing robots content to sitemap

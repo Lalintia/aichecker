@@ -13,6 +13,7 @@ import {
   getArticleRecommendations,
   type ArticleSchema,
 } from '../article-validator';
+import { extractJsonLdScripts as parseJsonLdScripts } from '../jsonld-utils';
 
 describe('extractJsonLdScripts', () => {
   it('should extract JSON-LD scripts from HTML', () => {
@@ -324,7 +325,7 @@ describe('validateArticleSchema', () => {
 describe('validateArticleSchemas', () => {
   it('should return not found when no JSON-LD', () => {
     const html = '<html></html>';
-    const result = validateArticleSchemas(html);
+    const result = validateArticleSchemas(parseJsonLdScripts(html));
     assert.strictEqual(result.found, false);
     assert.ok(result.errors.includes('No JSON-LD scripts found'));
   });
@@ -337,7 +338,7 @@ describe('validateArticleSchemas', () => {
         </script>
       </html>
     `;
-    const result = validateArticleSchemas(html);
+    const result = validateArticleSchemas(parseJsonLdScripts(html));
     assert.strictEqual(result.found, false);
     assert.ok(result.errors.includes('No Article, BlogPosting, or NewsArticle schema found'));
   });
@@ -356,7 +357,7 @@ describe('validateArticleSchemas', () => {
         </script>
       </html>
     `;
-    const result = validateArticleSchemas(html);
+    const result = validateArticleSchemas(parseJsonLdScripts(html));
     assert.strictEqual(result.found, true);
     assert.strictEqual(result.articles.length, 1);
     assert.strictEqual(result.articles[0].type, 'Article');
@@ -373,7 +374,7 @@ describe('validateArticleSchemas', () => {
         </script>
       </html>
     `;
-    const result = validateArticleSchemas(html);
+    const result = validateArticleSchemas(parseJsonLdScripts(html));
     assert.strictEqual(result.articles.length, 2);
     assert.ok(result.totalScore > 0);
   });

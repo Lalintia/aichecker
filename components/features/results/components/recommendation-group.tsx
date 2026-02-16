@@ -1,5 +1,3 @@
-'use client';
-
 import type { Recommendation } from '@/lib/types/checker';
 
 interface RecommendationGroupProps {

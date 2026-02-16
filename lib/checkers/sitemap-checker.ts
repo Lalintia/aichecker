@@ -6,7 +6,79 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult, createPartialResult } from './base';
-import { isSafeUrl, sanitizeContent } from '@/lib/security';
+import { isSafeUrlWithDns, safeFetch, sanitizeContent } from '@/lib/security';
+
+const MAX_SITEMAP_SIZE = 5 * 1024 * 1024; // 5MB
+
+interface FoundSitemap {
+  readonly url: string;
+  readonly content: string;
+  readonly urls: number;
+  readonly hasUrlset: boolean;
+  readonly hasSitemapIndex: boolean;
+  readonly hasLastmod: boolean;
+  readonly hasChangefreq: boolean;
+  readonly hasPriority: boolean;
+}
+
+async function trySitemapUrl(sitemapUrl: string): Promise<FoundSitemap> {
+  if (!(await isSafeUrlWithDns(sitemapUrl))) {
+    throw new Error(`${sitemapUrl}: URL not allowed`);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  let response: Response;
+  try {
+    response = await safeFetch(sitemapUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
+        Accept: 'application/xml,text/xml',
+      },
+      next: { revalidate: 0 },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const contentLength = response.headers.get('content-length');
+  if (contentLength && parseInt(contentLength, 10) > MAX_SITEMAP_SIZE) {
+    throw new Error('Sitemap too large');
+  }
+
+  const rawContent = await response.text();
+  if (rawContent.length > MAX_SITEMAP_SIZE) {
+    throw new Error('Sitemap too large');
+  }
+
+  // Compute flags immediately — rawContent is never stored beyond this scope
+  const hasUrlset = rawContent.includes('<urlset');
+  const hasSitemapIndex = rawContent.includes('<sitemapindex');
+
+  if (!hasUrlset && !hasSitemapIndex) {
+    throw new Error('Not a valid sitemap format');
+  }
+
+  const urlMatches = rawContent.match(/<url>/g);
+
+  return {
+    url: sitemapUrl,
+    content: sanitizeContent(rawContent, 500),
+    urls: urlMatches ? urlMatches.length : 0,
+    hasUrlset,
+    hasSitemapIndex,
+    hasLastmod: rawContent.includes('<lastmod>'),
+    hasChangefreq: rawContent.includes('<changefreq>'),
+    hasPriority: rawContent.includes('<priority>'),
+  };
+}
 
 export async function checkSitemap(
   url: string,
@@ -45,107 +117,38 @@ export async function checkSitemap(
       ];
     }
 
-    let foundSitemap: { url: string; fullContent: string; content: string; urls: number } | null = null;
-    const errors: string[] = [];
-
-    for (const sitemapUrl of sitemapUrls) {
-      try {
-        // Validate URL before fetching (SSRF protection)
-        if (!isSafeUrl(sitemapUrl)) {
-          errors.push(`${sitemapUrl}: URL not allowed`);
-          continue;
-        }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        let response: Response;
-        try {
-          response = await fetch(sitemapUrl, {
-            method: 'GET',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; AISearchChecker/1.0)',
-              Accept: 'application/xml,text/xml',
-            },
-            redirect: 'manual',
-            next: { revalidate: 0 },
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(timeoutId);
-        }
-
-        if (response.ok) {
-          // Limit response size to prevent memory exhaustion (5MB max)
-          const MAX_SITEMAP_SIZE = 5 * 1024 * 1024; // 5MB
-          const contentLength = response.headers.get('content-length');
-          if (contentLength && parseInt(contentLength, 10) > MAX_SITEMAP_SIZE) {
-            errors.push(`${sitemapUrl}: Sitemap too large`);
-            continue;
-          }
-          const content = await response.text();
-          if (content.length > MAX_SITEMAP_SIZE) {
-            errors.push(`${sitemapUrl}: Sitemap too large`);
-            continue;
-          }
-
-          // Check if it's a valid sitemap
-          if (content.includes('<urlset') || content.includes('<sitemapindex')) {
-            // Count URLs
-            const urlMatches = content.match(/<url>/g);
-            const urlCount = urlMatches ? urlMatches.length : 0;
-
-            foundSitemap = {
-              url: sitemapUrl,
-              fullContent: content,
-              content: sanitizeContent(content, 500),
-              urls: urlCount,
-            };
-            break;
-          } else {
-            errors.push(`${sitemapUrl}: Not a valid sitemap format`);
-          }
-        } else {
-          errors.push(`${sitemapUrl}: HTTP ${response.status}`);
-        }
-      } catch (err) {
-        errors.push(`${sitemapUrl}: ${err instanceof Error ? err.message : 'Fetch error'}`);
-      }
-    }
-
-    if (!foundSitemap) {
+    let foundSitemap: FoundSitemap;
+    try {
+      // Race all URLs in parallel — first valid sitemap wins
+      foundSitemap = await Promise.any(sitemapUrls.map(trySitemapUrl));
+    } catch (err) {
+      const errors =
+        err instanceof AggregateError
+          ? err.errors.map((e: unknown) => (e instanceof Error ? e.message : 'Fetch error'))
+          : ['Unable to fetch sitemap'];
       return createFailureResult('Sitemap.xml not found', {
         checkedUrls: sitemapUrls,
         errors,
       });
     }
 
-    // Validate against full content, not the 500-char truncated preview
-    const fullContent = foundSitemap.fullContent;
-    const hasUrlset = fullContent.includes('<urlset');
-    const hasSitemapIndex = fullContent.includes('<sitemapindex');
-    const hasUrls = foundSitemap.urls > 0;
-    const hasLastmod = fullContent.includes('<lastmod>');
-    const hasChangefreq = fullContent.includes('<changefreq>');
-    const hasPriority = fullContent.includes('<priority>');
-
     let score = 100;
-    if (!hasUrls) score -= 30;
-    if (!hasLastmod) score -= 10;
-    if (!hasChangefreq) score -= 10;
-    if (!hasPriority) score -= 5;
+    if (!foundSitemap.urls) score -= 30;
+    if (!foundSitemap.hasLastmod) score -= 10;
+    if (!foundSitemap.hasChangefreq) score -= 10;
+    if (!foundSitemap.hasPriority) score -= 5;
 
     score = Math.max(0, score);
 
     const data: Record<string, unknown> = {
       url: foundSitemap.url,
       urls: foundSitemap.urls,
-      hasUrlset,
-      hasSitemapIndex,
-      hasLastmod,
-      hasChangefreq,
-      hasPriority,
-      type: hasSitemapIndex ? 'sitemapindex' : 'urlset',
+      hasUrlset: foundSitemap.hasUrlset,
+      hasSitemapIndex: foundSitemap.hasSitemapIndex,
+      hasLastmod: foundSitemap.hasLastmod,
+      hasChangefreq: foundSitemap.hasChangefreq,
+      hasPriority: foundSitemap.hasPriority,
+      type: foundSitemap.hasSitemapIndex ? 'sitemapindex' : 'urlset',
     };
 
     if (score >= 80) {
@@ -157,7 +160,7 @@ export async function checkSitemap(
     }
 
     return createPartialResult(
-      `Sitemap found but missing some optional fields`,
+      'Sitemap found but missing some optional fields',
       score,
       data
     );

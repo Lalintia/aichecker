@@ -620,7 +620,7 @@ describe('HTML Validation', () => {
         </html>
       `;
 
-      const result = validateOrganizationAndWebSite(html);
+      const result = validateOrganizationAndWebSite(extractJsonLdScripts(html));
 
       assert.strictEqual(result.organization.found, true);
       assert.strictEqual(result.website.found, true);
@@ -632,7 +632,7 @@ describe('HTML Validation', () => {
 
     it('should handle missing schemas gracefully', () => {
       const html = '<html><head></head><body>No schema</body></html>';
-      const result = validateOrganizationAndWebSite(html);
+      const result = validateOrganizationAndWebSite(extractJsonLdScripts(html));
 
       assert.strictEqual(result.organization.found, false);
       assert.strictEqual(result.website.found, false);
@@ -665,7 +665,7 @@ describe('HTML Validation', () => {
         </html>
       `;
 
-      const result = validateOrganizationAndWebSite(html);
+      const result = validateOrganizationAndWebSite(extractJsonLdScripts(html));
 
       assert.strictEqual(result.organization.results.length, 2);
       // Best score should be from the complete org

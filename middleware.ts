@@ -10,9 +10,11 @@ export function middleware(request: NextRequest) {
 
   // Only apply rate limiting to API routes
   if (request.nextUrl.pathname.startsWith('/api/')) {
-    // Get client IP - prefer connection info over headers (prevents spoofing)
-    // In production with trusted reverse proxy, use x-forwarded-for
-    // For now, use a combination approach that's safer
+    // Skip rate limiting for CORS preflight — OPTIONS don't consume API quota
+    if (request.method === 'OPTIONS') {
+      return response;
+    }
+
     const ip = getClientIp(request);
 
     // Skip per-IP rate limiting when the client IP cannot be determined.
@@ -50,19 +52,25 @@ export function middleware(request: NextRequest) {
 
 /**
  * Get client IP with spoofing protection.
- * Uses x-forwarded-for last entry — the IP appended by the closest trusted reverse proxy
- * (Nginx/Cloudflare). The last entry is the least spoofable since it is added by
- * the server-side proxy, not the client.
+ * Prefers CF-Connecting-IP (Cloudflare) which is set by Cloudflare and cannot be
+ * spoofed. Falls back to the first entry of x-forwarded-for (the original client IP
+ * prepended by load balancers).
  *
  * NOTE: Do NOT trust x-real-ip — it can be freely set by any client.
  */
 function getClientIp(request: NextRequest): string {
-  // Use x-forwarded-for last entry (appended by trusted reverse proxy)
+  // CF-Connecting-IP is authoritative in Cloudflare deployments
+  const cfIp = request.headers.get('cf-connecting-ip');
+  if (cfIp && isValidIpFormat(cfIp)) {
+    return cfIp;
+  }
+
+  // First entry of x-forwarded-for is the original client IP
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
     const ips = forwardedFor.split(',').map((ip) => ip.trim()).filter(isValidIpFormat);
     if (ips.length > 0) {
-      return ips[ips.length - 1];
+      return ips[0];
     }
   }
 
@@ -77,10 +85,14 @@ function isValidIpFormat(ip: string): boolean {
   if (!ip || ip === 'unknown') return false;
   if (ip === 'localhost' || ip === '127.0.0.1' || ip === '::1') return false;
   
-  // Check for valid IPv4 or IPv6 format
-  const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+  // IPv6 max length: 45 chars covers full IPv6-mapped IPv4 (e.g. ::ffff:255.255.255.255)
+  // Reject oversized strings to prevent map-key bloat attacks
+  if (ip.length > 45) return false;
+
+  // Strict IPv4 validation (0-255 per octet) and basic IPv6 format check
+  const ipv4Pattern = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)(\.(25[0-5]|2[0-4]\d|[01]?\d\d?)){3}$/;
   const ipv6Pattern = /^[0-9a-fA-F:]+$/;
-  
+
   return ipv4Pattern.test(ip) || ipv6Pattern.test(ip);
 }
 

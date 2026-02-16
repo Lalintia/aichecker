@@ -1,7 +1,7 @@
 'use client';
 
 import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
-import type { CheckResult } from '@/lib/types/checker';
+import type { CheckResult, CheckType } from '@/lib/types/checker';
 import type { CheckLabel } from '@/lib/utils/check-helpers';
 import { SchemaDetails, type SchemaDetail } from './schema-details';
 import { CheckReferenceButton } from './check-references';
@@ -12,7 +12,15 @@ interface ChecklistItemProps {
   readonly index: number;
   readonly check: CheckResult;
   readonly label: CheckLabel;
-  readonly checkType?: string;
+  readonly checkType?: CheckType;
+}
+
+interface SchemaCheckData {
+  readonly organizations?: readonly SchemaDetail[];
+  readonly websites?: readonly SchemaDetail[];
+  readonly articles?: readonly SchemaDetail[];
+  readonly breadcrumbLists?: readonly SchemaDetail[];
+  readonly localBusinesses?: readonly SchemaDetail[];
 }
 
 export function ChecklistItem({ index, check, label, checkType }: ChecklistItemProps): React.ReactElement {
@@ -54,13 +62,7 @@ export function ChecklistItem({ index, check, label, checkType }: ChecklistItemP
 
       {/* Show Schema Details for Schema.org check */}
       {isSchema && check.data && (
-        <SchemaDetails
-          organizations={(check.data as Record<string, unknown>).organizations as readonly SchemaDetail[] | undefined}
-          websites={(check.data as Record<string, unknown>).websites as readonly SchemaDetail[] | undefined}
-          articles={(check.data as Record<string, unknown>).articles as readonly SchemaDetail[] | undefined}
-          breadcrumbLists={(check.data as Record<string, unknown>).breadcrumbLists as readonly SchemaDetail[] | undefined}
-          localBusinesses={(check.data as Record<string, unknown>).localBusinesses as readonly SchemaDetail[] | undefined}
-        />
+        <SchemaDetails {...(check.data as SchemaCheckData)} />
       )}
     </div>
   );

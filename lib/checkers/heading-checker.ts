@@ -6,6 +6,7 @@
 
 import type { CheckResult } from './base';
 import { createSuccessResult, createFailureResult, createPartialResult } from './base';
+import { sanitizeContent } from '@/lib/security';
 
 export function checkHeadingHierarchy(html: string): CheckResult {
   const warnings: string[] = [];
@@ -43,9 +44,9 @@ export function checkHeadingHierarchy(html: string): CheckResult {
       continue;
     }
 
-    const text = html.slice(contentStart, contentEnd).replace(/<[^>]+>/g, '').trim();
-    if (text) {
-      headings.push({ level: parseInt(levelChar, 10), text });
+    const rawText = html.slice(contentStart, contentEnd).replace(/<[^>]+>/g, '').trim();
+    if (rawText) {
+      headings.push({ level: parseInt(levelChar, 10), text: sanitizeContent(rawText, 200) });
     }
     pos = contentEnd + closeTag.length;
   }

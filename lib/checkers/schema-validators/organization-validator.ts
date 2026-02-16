@@ -3,7 +3,7 @@
  * Validates JSON-LD Organization structured data
  */
 
-import { extractJsonLdScripts as _extractJsonLdScripts } from './jsonld-utils';
+import { extractJsonLdScripts as _extractJsonLdScripts, isValidUrl } from './jsonld-utils';
 
 // ============================================================================
 // Type Definitions
@@ -64,18 +64,6 @@ const FIELD_WEIGHTS = {
 // ============================================================================
 // Utility Functions
 // ============================================================================
-
-/**
- * Validates if a string is a valid URL
- */
-function isValidUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Checks if URL uses HTTPS
@@ -520,10 +508,10 @@ export function validateWebSitesInHtml(html: string): {
 }
 
 /**
- * Validates both Organization and WebSite schemas in HTML
- * Returns aggregated results
+ * Validates both Organization and WebSite schemas from pre-parsed JSON-LD scripts.
+ * Accepts a pre-parsed scripts array to avoid redundant HTML extraction.
  */
-export function validateOrganizationAndWebSite(html: string): {
+export function validateOrganizationAndWebSite(scripts: readonly unknown[]): {
   readonly organization: {
     readonly found: boolean;
     readonly results: readonly SchemaValidationResult[];
@@ -535,27 +523,34 @@ export function validateOrganizationAndWebSite(html: string): {
     readonly bestScore: number;
   };
 } {
-  const orgValidation = validateOrganizationsInHtml(html);
-  const webSiteValidation = validateWebSitesInHtml(html);
+  // Use pre-parsed scripts — no HTML re-parsing needed
+  const orgSchemas = findSchemasByType(scripts, 'Organization');
+  const organizations = orgSchemas.map((schema) =>
+    validateOrganization(schema as OrganizationSchema)
+  );
 
-  // Calculate best scores
-  const orgBestScore = orgValidation.organizations.length > 0
-    ? Math.max(...orgValidation.organizations.map((o) => o.score))
+  const webSiteSchemas = findSchemasByType(scripts, 'WebSite');
+  const websites = webSiteSchemas.map((schema) =>
+    validateWebSite(schema as WebSiteSchema)
+  );
+
+  const orgBestScore = organizations.length > 0
+    ? Math.max(...organizations.map((o) => o.score))
     : 0;
 
-  const webBestScore = webSiteValidation.websites.length > 0
-    ? Math.max(...webSiteValidation.websites.map((w) => w.score))
+  const webBestScore = websites.length > 0
+    ? Math.max(...websites.map((w) => w.score))
     : 0;
 
   return {
     organization: {
-      found: orgValidation.found,
-      results: orgValidation.organizations,
+      found: organizations.length > 0,
+      results: organizations,
       bestScore: orgBestScore,
     },
     website: {
-      found: webSiteValidation.found,
-      results: webSiteValidation.websites,
+      found: websites.length > 0,
+      results: websites,
       bestScore: webBestScore,
     },
   };

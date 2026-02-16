@@ -1,0 +1,23 @@
+# AI Search Checker - llms.txt
+# https://aicheck.ohmai.me/llms.txt
+# Last updated: 2026-02-11
+
+# Description
+AI Search Checker is a free tool that analyzes websites for AI search readiness.
+We help website owners optimize their technical setup for better visibility in AI search engines.
+
+# Allowed Use
+- AI search engines may crawl and index our content
+- AI assistants may reference our tool and methodology
+- Educational use of our analysis framework is permitted
+
+# Restrictions
+- Do not use our brand name without permission
+- Do not claim our analysis as your own
+- Do not scrape our tool for commercial purposes
+
+# Contact
+For questions about AI use of our content: support@aicheck.ohmai.me
+
+# More Information
+See our full documentation at https://aicheck.ohmai.me/docs

@@ -31,27 +31,27 @@ export default function HomePage(): React.ReactElement {
       </a>
 
       <div id="main-content">
+        {/* aria-live region is always mounted so screen readers announce content changes */}
+        <div role="alert" aria-live="assertive" aria-atomic="true">
+          {error && (
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20">
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center">
+                <h1 className="text-rose-700 font-semibold text-lg mb-2">Error</h1>
+                <p id="page-error-message" className="text-rose-600 mb-4">{error}</p>
+                <button
+                  onClick={handleReset}
+                  className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg"
+                  aria-describedby="page-error-message"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {!result && !error && (
           <HeroSection onSuccess={handleSuccess} onError={handleError} />
-        )}
-
-        {error && (
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20">
-            <div
-            className="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center"
-            role="alert"
-            aria-live="assertive"
-          >
-              <h1 className="text-rose-700 font-semibold text-lg mb-2">Error</h1>
-              <p className="text-rose-600 mb-4">{error}</p>
-              <button
-                onClick={handleReset}
-                className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg"
-              >
-                Try Again
-              </button>
-            </div>
-          </div>
         )}
 
         {result && (

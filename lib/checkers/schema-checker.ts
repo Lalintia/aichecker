@@ -12,7 +12,6 @@ import {
   validateBreadcrumbList,
   validateWebPage,
   validateLocalBusiness,
-  extractJsonLdScripts,
 } from './schema-validators';
 import { extractRawJsonLdScripts } from './schema-validators/jsonld-utils';
 import type {
@@ -49,13 +48,25 @@ export function checkSchema(_url: string, html: string): CheckResult {
   }
 
   try {
-    // Run all validators
-    const orgWebSiteResult = validateOrganizationAndWebSite(html);
-    const articleResult = validateArticleSchemas(html);
-    
-    // Extract scripts for other validators
-    const scripts = extractJsonLdScripts(html);
-    
+    // Extract raw scripts ONCE — reuse for both parsing and valid/invalid count
+    // This eliminates redundant calls to extractJsonLdScripts + extractRawJsonLdScripts
+    const rawScripts = extractRawJsonLdScripts(html);
+    const scripts: unknown[] = [];
+    let validCount = 0;
+    let invalidCount = 0;
+    for (const raw of rawScripts) {
+      try {
+        scripts.push(JSON.parse(raw));
+        validCount++;
+      } catch {
+        invalidCount++;
+      }
+    }
+
+    // Pass pre-parsed scripts — validators no longer re-extract from HTML
+    const orgWebSiteResult = validateOrganizationAndWebSite(scripts);
+    const articleResult = validateArticleSchemas(scripts);
+
     // Parse all schemas from scripts
     const allSchemas: unknown[] = [];
     for (const script of scripts) {
@@ -107,18 +118,7 @@ export function checkSchema(_url: string, html: string): CheckResult {
       invalidSchemas: 0,
     };
 
-    // Count valid/invalid using raw scripts so JSON parse failures are counted
-    const rawScripts = extractRawJsonLdScripts(html);
-    let validCount = 0;
-    let invalidCount = 0;
-    for (const raw of rawScripts) {
-      try {
-        JSON.parse(raw);
-        validCount++;
-      } catch {
-        invalidCount++;
-      }
-    }
+    // Use pre-extracted counts from the single rawScripts pass at the top
     detailedResult.totalSchemas = rawScripts.length;
     detailedResult.validSchemas = validCount;
     detailedResult.invalidSchemas = invalidCount;

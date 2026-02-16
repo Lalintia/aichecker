@@ -231,7 +231,7 @@ const colorClasses: Record<string, { bg: string; text: string; border: string }>
   gray: { bg: "bg-gray-100", text: "text-gray-800", border: "border-gray-200" },
 };
 
-export default function ValidationCriteriaPage() {
+export default function ValidationCriteriaPage(): React.ReactElement {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -239,10 +239,12 @@ export default function ValidationCriteriaPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/">
-                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <ArrowLeft className="h-5 w-5 text-gray-600" />
-                </button>
+              <Link
+                href="/"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors inline-flex items-center justify-center"
+                aria-label="Back to home"
+              >
+                <ArrowLeft className="h-5 w-5 text-gray-600" aria-hidden="true" />
               </Link>
               <div>
                 <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">

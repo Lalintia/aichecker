@@ -258,9 +258,10 @@ export function validateBreadcrumbList(schema: Record<string, unknown>): Breadcr
   const missingPositions: number[] = [];
   let hasValidPositions = true;
 
-  for (let i = 0; i < expectedPositions.length; i++) {
-    if (!sortedPositions.includes(expectedPositions[i])) {
-      missingPositions.push(expectedPositions[i]);
+  const sortedSet = new Set(sortedPositions);
+  for (const expected of expectedPositions) {
+    if (!sortedSet.has(expected)) {
+      missingPositions.push(expected);
       hasValidPositions = false;
     }
   }

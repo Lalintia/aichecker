@@ -1,0 +1,27 @@
+# AI Search Checker - robots.txt
+# https://aicheck.ohmai.me
+
+User-agent: *
+Allow: /
+
+# Allow all AI crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+# Sitemap location
+Sitemap: https://aicheck.ohmai.me/sitemap.xml

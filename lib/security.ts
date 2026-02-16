@@ -31,8 +31,9 @@ export function isSafeUrl(url: string): boolean {
         // Check if mapped IPv4 is private
         if (isPrivateIPv4(ipv4Part)) return false;
       }
-      if (/^fc00:/i.test(ipv6Literal)) return false;
-      if (/^fe80:/i.test(ipv6Literal)) return false;
+      if (/^f[cd][0-9a-f]{2}:/i.test(ipv6Literal)) return false; // fc00::/7 ULA (fc and fd)
+      if (/^fe[89ab][0-9a-f]:/i.test(ipv6Literal)) return false; // fe80::/10 link-local
+      if (ipv6Literal === '::') return false; // unspecified address
     }
     
     // Check for IPv4 addresses (including encoded forms)
@@ -124,10 +125,14 @@ export function sanitizeContent(content: string, maxLength: number = 1000): stri
  */
 export async function validateDnsResolution(hostname: string): Promise<boolean> {
   try {
-    const { address } = await lookup(hostname, { family: 4 });
+    const dnsPromise = lookup(hostname, { family: 4 });
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DNS timeout')), 5000)
+    );
+    const { address } = await Promise.race([dnsPromise, timeoutPromise]);
     return !isPrivateIPv4(address);
   } catch {
-    // DNS lookup failed (NXDOMAIN, network error, etc.) — block the request
+    // DNS lookup failed (NXDOMAIN, timeout, network error) — block the request
     return false;
   }
 }
@@ -174,8 +179,8 @@ export async function safeFetch(
     throw new Error('Invalid redirect location');
   }
 
-  // Block redirects to unsafe (internal/private) addresses
-  if (!isSafeUrl(resolvedUrl)) {
+  // Block redirects to unsafe (internal/private) addresses — DNS check prevents rebinding
+  if (!(await isSafeUrlWithDns(resolvedUrl))) {
     throw new Error('Redirect to unsafe URL blocked');
   }
 

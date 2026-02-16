@@ -592,14 +592,14 @@ export function extractArticleSchemas(jsonLdScripts: readonly string[]): Article
  * Main validation function for article schemas
  * Parses HTML, extracts JSON-LD, validates article schemas
  */
-export function validateArticleSchemas(html: string): ArticleValidatorResult {
+/**
+ * Accepts pre-parsed JSON-LD scripts to avoid redundant HTML extraction.
+ */
+export function validateArticleSchemas(scripts: readonly unknown[]): ArticleValidatorResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  
-  // Extract JSON-LD scripts
-  const jsonLdScripts = extractJsonLdScripts(html);
-  
-  if (jsonLdScripts.length === 0) {
+
+  if (scripts.length === 0) {
     return {
       found: false,
       articles: Object.freeze([]),
@@ -608,10 +608,23 @@ export function validateArticleSchemas(html: string): ArticleValidatorResult {
       warnings: Object.freeze([]),
     };
   }
-  
-  // Extract article schemas
-  const articleSchemas = extractArticleSchemas(jsonLdScripts);
-  
+
+  // Extract article schemas from pre-parsed scripts — no re-parsing needed
+  const articleSchemas: ArticleSchema[] = [];
+  for (const script of scripts) {
+    if (typeof script !== 'object' || script === null) { continue; }
+    const scriptObj = script as Record<string, unknown>;
+    if (scriptObj['@graph'] && Array.isArray(scriptObj['@graph'])) {
+      for (const item of scriptObj['@graph']) {
+        if (isValidObject(item) && isArticleSchema(item)) {
+          articleSchemas.push(item as ArticleSchema);
+        }
+      }
+    } else if (isArticleSchema(scriptObj)) {
+      articleSchemas.push(scriptObj as ArticleSchema);
+    }
+  }
+
   if (articleSchemas.length === 0) {
     return {
       found: false,
